@@ -1,0 +1,429 @@
+#include "session/grdc_rdp_session.h"
+
+#include <freerdp/freerdp.h>
+#include <freerdp/update.h>
+#include <freerdp/codec/bitmap.h>
+#include <freerdp/constants.h>
+
+#include <gio/gio.h>
+#include <string.h>
+
+#include "core/grdc_server_runtime.h"
+
+struct _GrdcRdpSession
+{
+    GObject parent_instance;
+
+    freerdp_peer *peer;
+    gchar *peer_address;
+    gchar *state;
+    GrdcServerRuntime *runtime;
+    guint32 frame_sequence;
+    gboolean is_activated;
+};
+
+G_DEFINE_TYPE(GrdcRdpSession, grdc_rdp_session, G_TYPE_OBJECT)
+
+static gboolean grdc_rdp_session_send_surface_bits(GrdcRdpSession *self,
+                                                   GrdcEncodedFrame *frame,
+                                                   guint32 frame_id,
+                                                   UINT32 negotiated_max_payload,
+                                                   GError **error);
+
+static void
+grdc_rdp_session_dispose(GObject *object)
+{
+    GrdcRdpSession *self = GRDC_RDP_SESSION(object);
+
+    if (self->peer != NULL && self->peer->context != NULL)
+    {
+        /* Let FreeRDP manage the context lifecycle */
+        self->peer = NULL;
+    }
+
+    g_clear_object(&self->runtime);
+
+    G_OBJECT_CLASS(grdc_rdp_session_parent_class)->dispose(object);
+}
+
+static void
+grdc_rdp_session_finalize(GObject *object)
+{
+    GrdcRdpSession *self = GRDC_RDP_SESSION(object);
+    g_clear_pointer(&self->peer_address, g_free);
+    g_clear_pointer(&self->state, g_free);
+    G_OBJECT_CLASS(grdc_rdp_session_parent_class)->finalize(object);
+}
+
+static void
+grdc_rdp_session_class_init(GrdcRdpSessionClass *klass)
+{
+    GObjectClass *object_class = G_OBJECT_CLASS(klass);
+    object_class->dispose = grdc_rdp_session_dispose;
+    object_class->finalize = grdc_rdp_session_finalize;
+}
+
+static void
+grdc_rdp_session_init(GrdcRdpSession *self)
+{
+    self->peer = NULL;
+    self->peer_address = g_strdup("unknown");
+    self->state = g_strdup("created");
+    self->runtime = NULL;
+    self->frame_sequence = 1;
+    self->is_activated = FALSE;
+}
+
+GrdcRdpSession *
+grdc_rdp_session_new(freerdp_peer *peer)
+{
+    g_return_val_if_fail(peer != NULL, NULL);
+
+    GrdcRdpSession *self = g_object_new(GRDC_TYPE_RDP_SESSION, NULL);
+    self->peer = peer;
+    g_clear_pointer(&self->peer_address, g_free);
+    self->peer_address = g_strdup(peer->hostname != NULL ? peer->hostname : "unknown");
+    return self;
+}
+
+void
+grdc_rdp_session_set_peer_state(GrdcRdpSession *self, const gchar *state)
+{
+    g_return_if_fail(GRDC_IS_RDP_SESSION(self));
+
+    g_clear_pointer(&self->state, g_free);
+    self->state = g_strdup(state != NULL ? state : "unknown");
+
+    g_message("Session %s transitioned to state %s", self->peer_address, self->state);
+}
+
+void
+grdc_rdp_session_set_runtime(GrdcRdpSession *self, GrdcServerRuntime *runtime)
+{
+    g_return_if_fail(GRDC_IS_RDP_SESSION(self));
+    g_return_if_fail(runtime == NULL || GRDC_IS_SERVER_RUNTIME(runtime));
+
+    if (self->runtime == runtime)
+    {
+        return;
+    }
+
+    if (runtime != NULL)
+    {
+        g_object_ref(runtime);
+    }
+
+    g_clear_object(&self->runtime);
+    self->runtime = runtime;
+}
+
+BOOL
+grdc_rdp_session_post_connect(GrdcRdpSession *self)
+{
+    g_return_val_if_fail(GRDC_IS_RDP_SESSION(self), FALSE);
+    grdc_rdp_session_set_peer_state(self, "post-connect");
+    return TRUE;
+}
+
+BOOL
+grdc_rdp_session_activate(GrdcRdpSession *self)
+{
+    g_return_val_if_fail(GRDC_IS_RDP_SESSION(self), FALSE);
+    grdc_rdp_session_set_peer_state(self, "activated");
+    self->is_activated = TRUE;
+    return TRUE;
+}
+
+BOOL
+grdc_rdp_session_pump(GrdcRdpSession *self)
+{
+    g_return_val_if_fail(GRDC_IS_RDP_SESSION(self), FALSE);
+    if (self->peer == NULL)
+    {
+        return FALSE;
+    }
+
+    BOOL ok = TRUE;
+    if (self->peer->CheckFileDescriptor != NULL)
+    {
+        ok = self->peer->CheckFileDescriptor(self->peer);
+        if (!ok)
+        {
+            g_message("Session %s CheckFileDescriptor failed", self->peer_address);
+            return FALSE;
+        }
+    }
+
+    if (self->runtime == NULL)
+    {
+        return TRUE;
+    }
+
+    if (!self->is_activated)
+    {
+        return TRUE;
+    }
+
+    UINT32 negotiated_max_payload = 0;
+    if (self->peer->context != NULL && self->peer->context->settings != NULL)
+    {
+        negotiated_max_payload = freerdp_settings_get_uint32(self->peer->context->settings,
+                                                             FreeRDP_MultifragMaxRequestSize);
+    }
+
+    GrdcEncodedFrame *encoded = NULL;
+    g_autoptr(GError) error = NULL;
+    if (!grdc_server_runtime_pull_encoded_frame(self->runtime,
+                                                0,
+                                                (gsize)negotiated_max_payload,
+                                                &encoded,
+                                                &error))
+    {
+        if (error != NULL && error->domain == G_IO_ERROR && error->code == G_IO_ERROR_TIMED_OUT)
+        {
+            g_clear_error(&error);
+            return TRUE;
+        }
+
+        if (error != NULL)
+        {
+            g_warning("Session %s failed to pull encoded frame: %s", self->peer_address, error->message);
+        }
+        return TRUE;
+    }
+
+    g_autoptr(GrdcEncodedFrame) owned_frame = encoded;
+
+    g_autoptr(GError) send_error = NULL;
+    if (!grdc_rdp_session_send_surface_bits(self,
+                                            owned_frame,
+                                            self->frame_sequence,
+                                            negotiated_max_payload,
+                                            &send_error))
+    {
+        if (send_error != NULL)
+        {
+            g_warning("Session %s failed to send frame: %s", self->peer_address, send_error->message);
+        }
+    }
+
+    self->frame_sequence++;
+    if (self->frame_sequence == 0)
+    {
+        self->frame_sequence = 1;
+    }
+
+    return TRUE;
+}
+
+void
+grdc_rdp_session_disconnect(GrdcRdpSession *self, const gchar *reason)
+{
+    g_return_if_fail(GRDC_IS_RDP_SESSION(self));
+
+    if (reason != NULL)
+    {
+        g_message("Disconnecting session %s: %s", self->peer_address, reason);
+    }
+
+    if (self->peer != NULL && self->peer->Disconnect != NULL)
+    {
+        self->peer->Disconnect(self->peer);
+        self->peer = NULL;
+    }
+
+    self->is_activated = FALSE;
+}
+
+gboolean
+grdc_rdp_session_pull_encoded_frame(GrdcRdpSession *self,
+                                     gint64 timeout_us,
+                                     gsize max_payload,
+                                     GrdcEncodedFrame **out_frame,
+                                     GError **error)
+{
+    g_return_val_if_fail(GRDC_IS_RDP_SESSION(self), FALSE);
+    g_return_val_if_fail(out_frame != NULL, FALSE);
+
+    if (self->runtime == NULL)
+    {
+        g_set_error_literal(error,
+                            G_IO_ERROR,
+                            G_IO_ERROR_FAILED,
+                            "Session has no attached runtime");
+        return FALSE;
+    }
+
+    return grdc_server_runtime_pull_encoded_frame(self->runtime,
+                                                  timeout_us,
+                                                  max_payload,
+                                                  out_frame,
+                                                  error);
+}
+
+static gboolean
+grdc_rdp_session_send_surface_bits(GrdcRdpSession *self,
+                                   GrdcEncodedFrame *frame,
+                                   guint32 frame_id,
+                                   UINT32 negotiated_max_payload,
+                                   GError **error)
+{
+    g_return_val_if_fail(GRDC_IS_RDP_SESSION(self), FALSE);
+    g_return_val_if_fail(GRDC_IS_ENCODED_FRAME(frame), FALSE);
+
+    if (self->peer == NULL || self->peer->context == NULL)
+    {
+        g_set_error_literal(error,
+                            G_IO_ERROR,
+                            G_IO_ERROR_FAILED,
+                            "Peer context not available");
+        return FALSE;
+    }
+
+    rdpContext *context = self->peer->context;
+    rdpUpdate *update = context->update;
+    if (update == NULL || update->SurfaceBits == NULL || update->SurfaceFrameMarker == NULL)
+    {
+        g_set_error_literal(error,
+                            G_IO_ERROR,
+                            G_IO_ERROR_NOT_SUPPORTED,
+                            "Surface update callbacks are not available");
+        return FALSE;
+    }
+
+    guint width = grdc_encoded_frame_get_width(frame);
+    guint height = grdc_encoded_frame_get_height(frame);
+    gsize data_size = 0;
+    const guint8 *data = grdc_encoded_frame_get_data(frame, &data_size);
+    if (data == NULL || data_size == 0)
+    {
+        g_set_error_literal(error,
+                            G_IO_ERROR,
+                            G_IO_ERROR_FAILED,
+                            "Encoded frame payload is empty");
+        return FALSE;
+    }
+
+    const gsize stride = grdc_encoded_frame_get_stride(frame);
+    const gboolean bottom_up = grdc_encoded_frame_get_is_bottom_up(frame);
+    GrdcFrameCodec codec = grdc_encoded_frame_get_codec(frame);
+
+    gsize payload_limit = (gsize)negotiated_max_payload;
+    if (payload_limit > 0 && payload_limit < stride)
+    {
+        payload_limit = stride;
+    }
+
+    SURFACE_FRAME_MARKER marker_begin = {SURFACECMD_FRAMEACTION_BEGIN, frame_id};
+    SURFACE_FRAME_MARKER marker_end = {SURFACECMD_FRAMEACTION_END, frame_id};
+
+    gboolean frame_started = update->SurfaceFrameMarker(context, &marker_begin);
+    if (!frame_started)
+    {
+        g_set_error_literal(error,
+                            G_IO_ERROR,
+                            G_IO_ERROR_FAILED,
+                            "SurfaceFrameMarker (begin) failed");
+        return FALSE;
+    }
+
+    gboolean success = FALSE;
+
+    if (codec == GRDC_FRAME_CODEC_RFX)
+    {
+        if (payload_limit > 0 && data_size > payload_limit)
+        {
+            g_set_error(error,
+                        G_IO_ERROR,
+                        G_IO_ERROR_FAILED,
+                        "Encoded RFX frame exceeds negotiated payload limit (%zu > %u)",
+                        data_size,
+                        negotiated_max_payload);
+            goto end_frame;
+        }
+
+        SURFACE_BITS_COMMAND cmd;
+        memset(&cmd, 0, sizeof(cmd));
+        cmd.cmdType = CMDTYPE_SET_SURFACE_BITS;
+        cmd.destLeft = 0;
+        cmd.destTop = 0;
+        cmd.destRight = width;
+        cmd.destBottom = height;
+        cmd.skipCompression = FALSE;
+
+        cmd.bmp.codecID = RDP_CODEC_ID_REMOTEFX;
+        cmd.bmp.bpp = 32;
+        cmd.bmp.flags = 0;
+        cmd.bmp.width = (UINT16)width;
+        cmd.bmp.height = (UINT16)height;
+        cmd.bmp.bitmapData = (BYTE *)data;
+        cmd.bmp.bitmapDataLength = (UINT32)data_size;
+
+        success = update->SurfaceBits(context, &cmd);
+    }
+    else
+    {
+        const gsize chunk_budget = (payload_limit > 0) ? payload_limit : (512 * 1024);
+        guint rows_per_chunk = (guint)MAX((gsize)1, chunk_budget / stride);
+        if (rows_per_chunk == 0)
+        {
+            rows_per_chunk = 1;
+        }
+
+        success = TRUE;
+        for (guint top = 0; top < height; top += rows_per_chunk)
+        {
+            guint chunk_height = MIN(rows_per_chunk, height - top);
+            gsize offset = bottom_up ? (gsize)stride * (height - top - chunk_height)
+                                     : (gsize)stride * top;
+
+            SURFACE_BITS_COMMAND cmd;
+            memset(&cmd, 0, sizeof(cmd));
+            cmd.cmdType = CMDTYPE_SET_SURFACE_BITS;
+            cmd.destLeft = 0;
+            cmd.destTop = top;
+            cmd.destRight = width;
+            cmd.destBottom = top + chunk_height;
+            cmd.skipCompression = TRUE;
+
+            cmd.bmp.bitmapData = (BYTE *)(data + offset);
+            cmd.bmp.bitmapDataLength = (UINT32)(stride * chunk_height);
+            cmd.bmp.bpp = 32;
+            cmd.bmp.flags = 0;
+            cmd.bmp.codecID = 0;
+            cmd.bmp.width = (UINT16)width;
+            cmd.bmp.height = (UINT16)chunk_height;
+
+            if (!update->SurfaceBits(context, &cmd))
+            {
+                success = FALSE;
+                break;
+            }
+        }
+    }
+
+end_frame:
+    if (!success)
+    {
+        g_set_error_literal(error,
+                            G_IO_ERROR,
+                            G_IO_ERROR_FAILED,
+                            "SurfaceBits command failed");
+        if (frame_started)
+        {
+            update->SurfaceFrameMarker(context, &marker_end);
+        }
+        return FALSE;
+    }
+
+    if (!update->SurfaceFrameMarker(context, &marker_end))
+    {
+        g_set_error_literal(error,
+                            G_IO_ERROR,
+                            G_IO_ERROR_FAILED,
+                            "SurfaceFrameMarker (end) failed");
+        return FALSE;
+    }
+
+    return TRUE;
+}

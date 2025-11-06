@@ -1,0 +1,317 @@
+#include "input/grdc_x11_input.h"
+
+#include <X11/Xlib.h>
+#include <X11/extensions/XTest.h>
+
+#include <freerdp/input.h>
+#include <freerdp/locale/keyboard.h>
+
+#include <gio/gio.h>
+#include <math.h>
+#include <string.h>
+
+struct _GrdcX11Input
+{
+    GObject parent_instance;
+
+    GMutex lock;
+    Display *display;
+    gint screen;
+    guint desktop_width;
+    guint desktop_height;
+    gboolean running;
+    guint32 keyboard_layout;
+};
+
+G_DEFINE_TYPE(GrdcX11Input, grdc_x11_input, G_TYPE_OBJECT)
+
+static gboolean grdc_x11_input_open_display(GrdcX11Input *self, GError **error);
+static void grdc_x11_input_close_display(GrdcX11Input *self);
+
+static void
+grdc_x11_input_dispose(GObject *object)
+{
+    GrdcX11Input *self = GRDC_X11_INPUT(object);
+    grdc_x11_input_stop(self);
+    g_mutex_clear(&self->lock);
+
+    G_OBJECT_CLASS(grdc_x11_input_parent_class)->dispose(object);
+}
+
+static void
+grdc_x11_input_class_init(GrdcX11InputClass *klass)
+{
+    GObjectClass *object_class = G_OBJECT_CLASS(klass);
+    object_class->dispose = grdc_x11_input_dispose;
+}
+
+static void
+grdc_x11_input_init(GrdcX11Input *self)
+{
+    g_mutex_init(&self->lock);
+    self->display = NULL;
+    self->screen = 0;
+    self->desktop_width = 1920;
+    self->desktop_height = 1080;
+    self->running = FALSE;
+    self->keyboard_layout = 0;
+}
+
+GrdcX11Input *
+grdc_x11_input_new(void)
+{
+    return g_object_new(GRDC_TYPE_X11_INPUT, NULL);
+}
+
+static gboolean
+grdc_x11_input_open_display(GrdcX11Input *self, GError **error)
+{
+    if (self->display != NULL)
+    {
+        return TRUE;
+    }
+
+    Display *display = XOpenDisplay(NULL);
+    if (display == NULL)
+    {
+        g_set_error_literal(error,
+                            G_IO_ERROR,
+                            G_IO_ERROR_FAILED,
+                            "X11 input injector failed to open default display");
+        return FALSE;
+    }
+
+    int event_base = 0;
+    int error_base = 0;
+    int major = 0;
+    int minor = 0;
+    if (!XTestQueryExtension(display, &event_base, &error_base, &major, &minor))
+    {
+        g_set_error_literal(error,
+                            G_IO_ERROR,
+                            G_IO_ERROR_NOT_SUPPORTED,
+                            "X11 XTest extension not available");
+        XCloseDisplay(display);
+        return FALSE;
+    }
+
+    self->display = display;
+    self->screen = DefaultScreen(display);
+
+    self->keyboard_layout = freerdp_keyboard_init(0);
+    if (self->keyboard_layout == 0)
+    {
+        self->keyboard_layout = freerdp_keyboard_init(KBD_US);
+    }
+
+    return TRUE;
+}
+
+static void
+grdc_x11_input_close_display(GrdcX11Input *self)
+{
+    if (self->display != NULL)
+    {
+        XCloseDisplay(self->display);
+        self->display = NULL;
+    }
+}
+
+gboolean
+grdc_x11_input_start(GrdcX11Input *self, GError **error)
+{
+    g_return_val_if_fail(GRDC_IS_X11_INPUT(self), FALSE);
+
+    g_mutex_lock(&self->lock);
+    if (self->running)
+    {
+        g_mutex_unlock(&self->lock);
+        return TRUE;
+    }
+
+    gboolean ok = grdc_x11_input_open_display(self, error);
+    if (ok)
+    {
+        self->running = TRUE;
+    }
+    g_mutex_unlock(&self->lock);
+    return ok;
+}
+
+void
+grdc_x11_input_stop(GrdcX11Input *self)
+{
+    g_return_if_fail(GRDC_IS_X11_INPUT(self));
+
+    g_mutex_lock(&self->lock);
+    if (!self->running)
+    {
+        g_mutex_unlock(&self->lock);
+        return;
+    }
+
+    grdc_x11_input_close_display(self);
+    self->running = FALSE;
+    g_mutex_unlock(&self->lock);
+}
+
+void
+grdc_x11_input_update_desktop_size(GrdcX11Input *self, guint width, guint height)
+{
+    g_return_if_fail(GRDC_IS_X11_INPUT(self));
+
+    g_mutex_lock(&self->lock);
+    if (width > 0)
+    {
+        self->desktop_width = width;
+    }
+    if (height > 0)
+    {
+        self->desktop_height = height;
+    }
+    g_mutex_unlock(&self->lock);
+}
+
+static gboolean
+grdc_x11_input_check_running(GrdcX11Input *self, GError **error)
+{
+    if (!self->running || self->display == NULL)
+    {
+        g_set_error_literal(error,
+                            G_IO_ERROR,
+                            G_IO_ERROR_FAILED,
+                            "X11 input injector is not running");
+        return FALSE;
+    }
+    return TRUE;
+}
+
+gboolean
+grdc_x11_input_inject_keyboard(GrdcX11Input *self, guint16 flags, guint8 scancode, GError **error)
+{
+    g_return_val_if_fail(GRDC_IS_X11_INPUT(self), FALSE);
+
+    g_mutex_lock(&self->lock);
+    if (!grdc_x11_input_check_running(self, error))
+    {
+        g_mutex_unlock(&self->lock);
+        return FALSE;
+    }
+
+    const gboolean release = (flags & KBD_FLAGS_RELEASE) != 0;
+    const gboolean extended = (flags & (KBD_FLAGS_EXTENDED | KBD_FLAGS_EXTENDED1)) != 0;
+    const UINT32 rdp_scancode = MAKE_RDP_SCANCODE(scancode, extended);
+    const UINT32 x11_keycode =
+        freerdp_keyboard_get_x11_keycode_from_rdp_scancode(rdp_scancode, extended ? TRUE : FALSE);
+
+    if (x11_keycode == 0)
+    {
+        g_mutex_unlock(&self->lock);
+        return TRUE;
+    }
+
+    XTestFakeKeyEvent(self->display,
+                      (unsigned int)x11_keycode,
+                      release ? False : True,
+                      CurrentTime);
+    XFlush(self->display);
+
+    g_mutex_unlock(&self->lock);
+    return TRUE;
+}
+
+gboolean
+grdc_x11_input_inject_unicode(GrdcX11Input *self, guint16 flags, guint16 codepoint, GError **error)
+{
+    g_return_val_if_fail(GRDC_IS_X11_INPUT(self), FALSE);
+    (void)flags;
+    (void)codepoint;
+    (void)error;
+    /* Unicode injection is not yet implemented; silently ignore for now. */
+    return TRUE;
+}
+
+static int
+grdc_x11_input_pointer_button(guint16 flags, guint16 mask, int button_id)
+{
+    if ((flags & mask) == 0)
+    {
+        return 0;
+    }
+
+    const gboolean press = (flags & PTR_FLAGS_DOWN) != 0;
+    return press ? button_id : -button_id;
+}
+
+gboolean
+grdc_x11_input_inject_pointer(GrdcX11Input *self,
+                              guint16 flags,
+                              guint16 x,
+                              guint16 y,
+                              GError **error)
+{
+    g_return_val_if_fail(GRDC_IS_X11_INPUT(self), FALSE);
+
+    g_mutex_lock(&self->lock);
+    if (!grdc_x11_input_check_running(self, error))
+    {
+        g_mutex_unlock(&self->lock);
+        return FALSE;
+    }
+
+    const guint32 width = MAX(self->desktop_width, 1u);
+    const guint32 height = MAX(self->desktop_height, 1u);
+
+    const guint16 max_x = (guint16)(width > 0 ? width - 1 : 0);
+    const guint16 max_y = (guint16)(height > 0 ? height - 1 : 0);
+    const guint16 clamped_x = x > max_x ? max_x : x;
+    const guint16 clamped_y = y > max_y ? max_y : y;
+
+    if (flags & PTR_FLAGS_MOVE)
+    {
+        XTestFakeMotionEvent(self->display, self->screen, clamped_x, clamped_y, CurrentTime);
+    }
+
+    struct ButtonMask
+    {
+        guint16 mask;
+        int button_id;
+    } button_map[] = {
+        {PTR_FLAGS_BUTTON1, 1},
+        {PTR_FLAGS_BUTTON3, 2},
+        {PTR_FLAGS_BUTTON2, 3},
+    };
+
+    for (guint i = 0; i < G_N_ELEMENTS(button_map); ++i)
+    {
+        int button_event = grdc_x11_input_pointer_button(flags, button_map[i].mask, button_map[i].button_id);
+        if (button_event > 0)
+        {
+            XTestFakeButtonEvent(self->display, button_event, True, CurrentTime);
+        }
+        else if (button_event < 0)
+        {
+            XTestFakeButtonEvent(self->display, -button_event, False, CurrentTime);
+        }
+    }
+
+    if (flags & PTR_FLAGS_WHEEL)
+    {
+        const gboolean negative = (flags & PTR_FLAGS_WHEEL_NEGATIVE) != 0;
+        const int button = negative ? 5 : 4;
+        XTestFakeButtonEvent(self->display, button, True, CurrentTime);
+        XTestFakeButtonEvent(self->display, button, False, CurrentTime);
+    }
+
+    if (flags & PTR_FLAGS_HWHEEL)
+    {
+        const gboolean negative = (flags & PTR_FLAGS_WHEEL_NEGATIVE) != 0;
+        const int button = negative ? 7 : 6;
+        XTestFakeButtonEvent(self->display, button, True, CurrentTime);
+        XTestFakeButtonEvent(self->display, button, False, CurrentTime);
+    }
+
+    XFlush(self->display);
+    g_mutex_unlock(&self->lock);
+    return TRUE;
+}
