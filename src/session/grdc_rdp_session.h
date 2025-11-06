@@ -21,10 +21,7 @@ BOOL grdc_rdp_session_post_connect(GrdcRdpSession *self);
 BOOL grdc_rdp_session_activate(GrdcRdpSession *self);
 BOOL grdc_rdp_session_pump(GrdcRdpSession *self);
 void grdc_rdp_session_disconnect(GrdcRdpSession *self, const gchar *reason);
-gboolean grdc_rdp_session_pull_encoded_frame(GrdcRdpSession *self,
-                                             gint64 timeout_us,
-                                             gsize max_payload,
-                                             GrdcEncodedFrame **out_frame,
-                                             GError **error);
+gboolean grdc_rdp_session_start_event_thread(GrdcRdpSession *self);
+void grdc_rdp_session_stop_event_thread(GrdcRdpSession *self);
 
 G_END_DECLS

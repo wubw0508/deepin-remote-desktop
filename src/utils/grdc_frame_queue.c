@@ -114,6 +114,12 @@ grdc_frame_queue_wait(GrdcFrameQueue *self, gint64 timeout_us, GrdcFrame **out_f
 
     while (self->running && !self->has_frame)
     {
+        if (timeout_us == 0)
+        {
+            g_mutex_unlock(&self->mutex);
+            return FALSE;
+        }
+
         if (timeout_us > 0)
         {
             if (!g_cond_wait_until(&self->cond, &self->mutex, deadline))

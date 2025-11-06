@@ -19,6 +19,8 @@ struct _GrdcX11Input
     gint screen;
     guint desktop_width;
     guint desktop_height;
+    guint stream_width;
+    guint stream_height;
     gboolean running;
     guint32 keyboard_layout;
 };
@@ -53,6 +55,8 @@ grdc_x11_input_init(GrdcX11Input *self)
     self->screen = 0;
     self->desktop_width = 1920;
     self->desktop_height = 1080;
+    self->stream_width = 1920;
+    self->stream_height = 1080;
     self->running = FALSE;
     self->keyboard_layout = 0;
 }
@@ -97,6 +101,16 @@ grdc_x11_input_open_display(GrdcX11Input *self, GError **error)
 
     self->display = display;
     self->screen = DefaultScreen(display);
+    self->desktop_width = (guint)DisplayWidth(display, self->screen);
+    self->desktop_height = (guint)DisplayHeight(display, self->screen);
+    if (self->desktop_width == 0)
+    {
+        self->desktop_width = 1920;
+    }
+    if (self->desktop_height == 0)
+    {
+        self->desktop_height = 1080;
+    }
 
     self->keyboard_layout = freerdp_keyboard_init(0);
     if (self->keyboard_layout == 0)
@@ -163,11 +177,11 @@ grdc_x11_input_update_desktop_size(GrdcX11Input *self, guint width, guint height
     g_mutex_lock(&self->lock);
     if (width > 0)
     {
-        self->desktop_width = width;
+        self->stream_width = width;
     }
     if (height > 0)
     {
-        self->desktop_height = height;
+        self->stream_height = height;
     }
     g_mutex_unlock(&self->lock);
 }
@@ -259,17 +273,42 @@ grdc_x11_input_inject_pointer(GrdcX11Input *self,
         return FALSE;
     }
 
-    const guint32 width = MAX(self->desktop_width, 1u);
-    const guint32 height = MAX(self->desktop_height, 1u);
+    const guint32 stream_width = MAX(self->stream_width, 1u);
+    const guint32 stream_height = MAX(self->stream_height, 1u);
+    const guint32 desktop_width = MAX(self->desktop_width, 1u);
+    const guint32 desktop_height = MAX(self->desktop_height, 1u);
 
-    const guint16 max_x = (guint16)(width > 0 ? width - 1 : 0);
-    const guint16 max_y = (guint16)(height > 0 ? height - 1 : 0);
-    const guint16 clamped_x = x > max_x ? max_x : x;
-    const guint16 clamped_y = y > max_y ? max_y : y;
+    const guint16 max_stream_x = (guint16)(stream_width > 0 ? stream_width - 1 : 0);
+    const guint16 max_stream_y = (guint16)(stream_height > 0 ? stream_height - 1 : 0);
+    const guint16 clamped_stream_x = x > max_stream_x ? max_stream_x : x;
+    const guint16 clamped_stream_y = y > max_stream_y ? max_stream_y : y;
+
+    guint16 target_x = clamped_stream_x;
+    guint16 target_y = clamped_stream_y;
+    if (stream_width != desktop_width)
+    {
+        const gdouble scale_x = (gdouble)desktop_width / (gdouble)stream_width;
+        guint scaled = (guint)((gdouble)clamped_stream_x * scale_x + 0.5);
+        if (scaled >= desktop_width)
+        {
+            scaled = desktop_width - 1;
+        }
+        target_x = (guint16)scaled;
+    }
+    if (stream_height != desktop_height)
+    {
+        const gdouble scale_y = (gdouble)desktop_height / (gdouble)stream_height;
+        guint scaled = (guint)((gdouble)clamped_stream_y * scale_y + 0.5);
+        if (scaled >= desktop_height)
+        {
+            scaled = desktop_height - 1;
+        }
+        target_y = (guint16)scaled;
+    }
 
     if (flags & PTR_FLAGS_MOVE)
     {
-        XTestFakeMotionEvent(self->display, self->screen, clamped_x, clamped_y, CurrentTime);
+        XTestFakeMotionEvent(self->display, self->screen, target_x, target_y, CurrentTime);
     }
 
     struct ButtonMask

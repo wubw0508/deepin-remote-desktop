@@ -8,6 +8,8 @@
 #include <gio/gio.h>
 #include <string.h>
 
+#include <winpr/synch.h>
+
 #include "core/grdc_server_runtime.h"
 
 struct _GrdcRdpSession
@@ -20,6 +22,9 @@ struct _GrdcRdpSession
     GrdcServerRuntime *runtime;
     guint32 frame_sequence;
     gboolean is_activated;
+    GThread *event_thread;
+    HANDLE stop_event;
+    gint connection_alive;
 };
 
 G_DEFINE_TYPE(GrdcRdpSession, grdc_rdp_session, G_TYPE_OBJECT)
@@ -29,11 +34,14 @@ static gboolean grdc_rdp_session_send_surface_bits(GrdcRdpSession *self,
                                                    guint32 frame_id,
                                                    UINT32 negotiated_max_payload,
                                                    GError **error);
+static gpointer grdc_rdp_session_event_thread(gpointer user_data);
 
 static void
 grdc_rdp_session_dispose(GObject *object)
 {
     GrdcRdpSession *self = GRDC_RDP_SESSION(object);
+
+    grdc_rdp_session_stop_event_thread(self);
 
     if (self->peer != NULL && self->peer->context != NULL)
     {
@@ -50,6 +58,7 @@ static void
 grdc_rdp_session_finalize(GObject *object)
 {
     GrdcRdpSession *self = GRDC_RDP_SESSION(object);
+    grdc_rdp_session_stop_event_thread(self);
     g_clear_pointer(&self->peer_address, g_free);
     g_clear_pointer(&self->state, g_free);
     G_OBJECT_CLASS(grdc_rdp_session_parent_class)->finalize(object);
@@ -72,6 +81,9 @@ grdc_rdp_session_init(GrdcRdpSession *self)
     self->runtime = NULL;
     self->frame_sequence = 1;
     self->is_activated = FALSE;
+    self->event_thread = NULL;
+    self->stop_event = NULL;
+    g_atomic_int_set(&self->connection_alive, 1);
 }
 
 GrdcRdpSession *
@@ -131,7 +143,62 @@ grdc_rdp_session_activate(GrdcRdpSession *self)
     g_return_val_if_fail(GRDC_IS_RDP_SESSION(self), FALSE);
     grdc_rdp_session_set_peer_state(self, "activated");
     self->is_activated = TRUE;
+    grdc_rdp_session_start_event_thread(self);
     return TRUE;
+}
+
+gboolean
+grdc_rdp_session_start_event_thread(GrdcRdpSession *self)
+{
+    g_return_val_if_fail(GRDC_IS_RDP_SESSION(self), FALSE);
+
+    if (self->event_thread != NULL)
+    {
+        return TRUE;
+    }
+
+    if (self->peer == NULL)
+    {
+        return FALSE;
+    }
+
+    if (self->stop_event == NULL)
+    {
+        self->stop_event = CreateEvent(NULL, TRUE, FALSE, NULL);
+        if (self->stop_event == NULL)
+        {
+            g_warning("Session %s failed to create stop event", self->peer_address);
+            return FALSE;
+        }
+    }
+
+    g_atomic_int_set(&self->connection_alive, 1);
+    self->event_thread = g_thread_new("grdc-rdp-io", grdc_rdp_session_event_thread, g_object_ref(self));
+    return TRUE;
+}
+
+void
+grdc_rdp_session_stop_event_thread(GrdcRdpSession *self)
+{
+    g_return_if_fail(GRDC_IS_RDP_SESSION(self));
+
+    if (self->event_thread != NULL)
+    {
+        if (self->stop_event != NULL)
+        {
+            SetEvent(self->stop_event);
+        }
+        g_thread_join(self->event_thread);
+        self->event_thread = NULL;
+    }
+
+    if (self->stop_event != NULL)
+    {
+        CloseHandle(self->stop_event);
+        self->stop_event = NULL;
+    }
+
+    g_atomic_int_set(&self->connection_alive, 0);
 }
 
 BOOL
@@ -143,15 +210,10 @@ grdc_rdp_session_pump(GrdcRdpSession *self)
         return FALSE;
     }
 
-    BOOL ok = TRUE;
-    if (self->peer->CheckFileDescriptor != NULL)
+    if (!g_atomic_int_get(&self->connection_alive))
     {
-        ok = self->peer->CheckFileDescriptor(self->peer);
-        if (!ok)
-        {
-            g_message("Session %s CheckFileDescriptor failed", self->peer_address);
-            return FALSE;
-        }
+        g_message("Session %s connection closed", self->peer_address);
+        return FALSE;
     }
 
     if (self->runtime == NULL)
@@ -226,6 +288,8 @@ grdc_rdp_session_disconnect(GrdcRdpSession *self, const gchar *reason)
         g_message("Disconnecting session %s: %s", self->peer_address, reason);
     }
 
+    grdc_rdp_session_stop_event_thread(self);
+
     if (self->peer != NULL && self->peer->Disconnect != NULL)
     {
         self->peer->Disconnect(self->peer);
@@ -235,30 +299,72 @@ grdc_rdp_session_disconnect(GrdcRdpSession *self, const gchar *reason)
     self->is_activated = FALSE;
 }
 
-gboolean
-grdc_rdp_session_pull_encoded_frame(GrdcRdpSession *self,
-                                     gint64 timeout_us,
-                                     gsize max_payload,
-                                     GrdcEncodedFrame **out_frame,
-                                     GError **error)
-{
-    g_return_val_if_fail(GRDC_IS_RDP_SESSION(self), FALSE);
-    g_return_val_if_fail(out_frame != NULL, FALSE);
+static gboolean
+grdc_rdp_session_send_surface_bits(GrdcRdpSession *self,
+                                   GrdcEncodedFrame *frame,
+                                   guint32 frame_id,
+                                   UINT32 negotiated_max_payload,
+                                   GError **error);
 
-    if (self->runtime == NULL)
+static gpointer
+grdc_rdp_session_event_thread(gpointer user_data)
+{
+    GrdcRdpSession *self = GRDC_RDP_SESSION(user_data);
+    freerdp_peer *peer = self->peer;
+
+    if (peer == NULL)
     {
-        g_set_error_literal(error,
-                            G_IO_ERROR,
-                            G_IO_ERROR_FAILED,
-                            "Session has no attached runtime");
-        return FALSE;
+        g_atomic_int_set(&self->connection_alive, 0);
+        g_object_unref(self);
+        return NULL;
     }
 
-    return grdc_server_runtime_pull_encoded_frame(self->runtime,
-                                                  timeout_us,
-                                                  max_payload,
-                                                  out_frame,
-                                                  error);
+    while (TRUE)
+    {
+        HANDLE handles[64];
+        DWORD count = 0;
+
+        if (self->stop_event != NULL)
+        {
+            handles[count++] = self->stop_event;
+        }
+
+        DWORD obtained = 0;
+        if (peer->GetEventHandles != NULL)
+        {
+            obtained = peer->GetEventHandles(peer, &handles[count], G_N_ELEMENTS(handles) - count);
+        }
+
+        if (obtained == 0)
+        {
+            g_atomic_int_set(&self->connection_alive, 0);
+            break;
+        }
+
+        count += obtained;
+
+        DWORD status = WaitForMultipleObjects(count, handles, FALSE, INFINITE);
+        if (status == WAIT_FAILED)
+        {
+            g_atomic_int_set(&self->connection_alive, 0);
+            break;
+        }
+
+        if (self->stop_event != NULL && status == WAIT_OBJECT_0)
+        {
+            break;
+        }
+
+        if (!peer->CheckFileDescriptor(peer))
+        {
+            g_message("Session %s CheckFileDescriptor failed in event thread", self->peer_address);
+            g_atomic_int_set(&self->connection_alive, 0);
+            break;
+        }
+    }
+
+    g_object_unref(self);
+    return NULL;
 }
 
 static gboolean

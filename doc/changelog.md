@@ -1,5 +1,9 @@
 # 变更记录
 
+## 2025-11-06：输入/视频管线排查（临时记录）
+- 恢复 `grdc_rdp_session` 中的 SurfaceBits 推送逻辑，确保后续测试包含完整视频链路。
+- 引入 FreeRDP 事件专用线程，采用 `WaitForMultipleObjects` 监听传输句柄，避免主循环阻塞导致的输入延迟；主循环仅负责编码与帧发送。
+
 ## 2025-11-06：FreeRDP 参数同步与 RFX 传输修整
 - **目的**：
   - 对齐原项目的 FreeRDP 会话配置，避免 SurfaceBits/RemoteFX 在协商阶段出现尺寸或编码能力不匹配。
@@ -16,6 +20,8 @@
   - 会话层在发送 RFX 帧时先检查协商的 `MultifragMaxRequestSize`，若超限则回退 Raw 路径，同时保证 FrameAction Begin → End 的对称性。
   - Raw 分支保留逐块下发逻辑，并复用协商出的最大负载参数，避免硬编码。
   - `encoding/grdc_rfx_encoder` 保持自顶向下的像素顺序，与 X11 捕获输出一致，避免远端画面倒置。
+  - `input/grdc_x11_input` 根据捕获分辨率与物理桌面尺寸计算指针缩放，确保客户端坐标映射准确，消除远端拖动缓慢的体验。
+  - `utils/grdc_frame_queue` 在 `timeout_us == 0` 时改为非阻塞返回，避免会话循环在无帧更新时挂起，从而保障输入事件及时处理。
 - **影响**：
   - 新增接口需要在后续模块调用时注意判空，监听器若获取失败会主动拒绝连接。
   - 远端客户端现在与采集端分辨率保持一致，后续在引入桌面重设逻辑时可直接复用该流程。
@@ -57,7 +63,7 @@
   - 更新 `grdc_capture_manager` 与 `grdc_server_runtime` 使其依赖新组件。
   - Meson 引入 X11/XDamage 依赖。
 - **主要改动**：
-  - 实现 XShm + XDamage 抓屏线程，封装为 `GrdcX11Capture`。 
+  - 实现 XShm + XDamage 抓屏线程，封装为 `GrdcX11Capture`。
   - 定义 `GrdcFrame`（像素缓冲 + 元数据）与 `GrdcFrameQueue`（阻塞队列）。
   - 采集管理器、运行时更新，以 `GrdcFrameQueue` 为共享通道。
 - **影响**：

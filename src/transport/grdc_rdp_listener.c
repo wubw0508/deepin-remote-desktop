@@ -207,6 +207,7 @@ grdc_rdp_peer_pointer_event(rdpInput *input, UINT16 flags, UINT16 x, UINT16 y)
     {
         return TRUE;
     }
+    g_debug("xx %d %d %d",flags,x,y);
 
     g_autoptr(GError) error = NULL;
     if (!grdc_input_dispatcher_handle_pointer(dispatcher, flags, x, y, &error) && error != NULL)
@@ -364,6 +365,12 @@ grdc_listener_peer_accepted(freerdp_listener *listener, freerdp_peer *client)
 
     ctx->runtime = g_object_ref(self->runtime);
     grdc_rdp_session_set_runtime(ctx->session, self->runtime);
+
+    if (!grdc_rdp_session_start_event_thread(ctx->session))
+    {
+        g_warning("Failed to start event thread for peer %s", client->hostname);
+        return FALSE;
+    }
 
     grdc_rdp_session_set_peer_state(ctx->session, "initialized");
     g_ptr_array_add(self->sessions, g_object_ref(ctx->session));
