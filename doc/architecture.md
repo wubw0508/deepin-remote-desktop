@@ -8,7 +8,7 @@
 ## 模块分层
 
 ### 1. 核心层
-- `core/grdc_application`：负责命令行解析、GLib 主循环、信号处理与监听器启动。
+- `core/grdc_application`：负责命令行解析、GLib 主循环、信号处理与监听器启动（打包进 `libgrdc-core.a`）。
 - `core/grdc_server_runtime`：聚合 Capture/Encoding/Input 子系统，提供 `prepare_stream()` / `stop()` 接口。
 - `core/grdc_config`：解析 INI/CLI 配置，集中管理绑定地址、TLS 证书、捕获尺寸等运行参数。
 - `security/grdc_tls_credentials`：加载并缓存 TLS 证书/私钥，供运行时向 FreeRDP Settings 注入。
@@ -16,6 +16,7 @@
 ### 2. 采集层
 - `capture/grdc_capture_manager`：启动/停止屏幕捕获，维护帧队列。
 - `capture/grdc_x11_capture`：X11/XShm 抓屏线程，侦听 XDamage 并推送帧。
+（以上与编码/输入/工具组成 `libgrdc-media.a`，供核心库复用）
 
 ### 3. 编码层
 - `encoding/grdc_encoding_manager`：统一编码配置、调度；对外暴露帧编码接口。

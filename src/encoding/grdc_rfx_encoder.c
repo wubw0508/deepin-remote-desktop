@@ -5,6 +5,7 @@
 #include <winpr/stream.h>
 
 #include <gio/gio.h>
+#include <string.h>
 
 struct _GrdcRfxEncoder
 {
@@ -17,7 +18,10 @@ struct _GrdcRfxEncoder
     GrdcRfxQuality quality;
     guint64 last_frame_timestamp;
     GByteArray *bottom_up_frame;
+    GByteArray *previous_frame;
     GArray *tile_hashes;
+    guint tiles_x;
+    guint tiles_y;
 };
 
 G_DEFINE_TYPE(GrdcRfxEncoder, grdc_rfx_encoder, G_TYPE_OBJECT)
@@ -86,6 +90,7 @@ grdc_rfx_encoder_dispose(GObject *object)
     }
 
     g_clear_pointer(&self->bottom_up_frame, g_byte_array_unref);
+    g_clear_pointer(&self->previous_frame, g_byte_array_unref);
     g_clear_pointer(&self->tile_hashes, g_array_unref);
 
     G_OBJECT_CLASS(grdc_rfx_encoder_parent_class)->dispose(object);
@@ -108,7 +113,10 @@ grdc_rfx_encoder_init(GrdcRfxEncoder *self)
     self->quality = GRDC_RFX_QUALITY_HIGH;
     self->last_frame_timestamp = 0;
     self->bottom_up_frame = g_byte_array_new();
+    self->previous_frame = g_byte_array_new();
     self->tile_hashes = g_array_new(FALSE, TRUE, sizeof(guint64));
+    self->tiles_x = 0;
+    self->tiles_y = 0;
 }
 
 GrdcRfxEncoder *
@@ -194,9 +202,12 @@ grdc_rfx_encoder_configure(GrdcRfxEncoder *self,
     g_byte_array_set_size(self->bottom_up_frame, (gsize)width * height * 4u);
     memset(self->bottom_up_frame->data, 0, self->bottom_up_frame->len);
 
-    const guint tiles_x = (width + 63) / 64;
-    const guint tiles_y = (height + 63) / 64;
-    g_array_set_size(self->tile_hashes, tiles_x * tiles_y);
+    g_byte_array_set_size(self->previous_frame, (gsize)width * height * 4u);
+    memset(self->previous_frame->data, 0, self->previous_frame->len);
+
+    self->tiles_x = (width + 63) / 64;
+    self->tiles_y = (height + 63) / 64;
+    g_array_set_size(self->tile_hashes, self->tiles_x * self->tiles_y);
     memset(self->tile_hashes->data, 0, self->tile_hashes->len * sizeof(guint64));
 
     return TRUE;
@@ -214,6 +225,7 @@ grdc_rfx_encoder_reset(GrdcRfxEncoder *self)
     }
 
     g_byte_array_set_size(self->bottom_up_frame, 0);
+    g_byte_array_set_size(self->previous_frame, 0);
     g_array_set_size(self->tile_hashes, 0);
 
     self->width = 0;
@@ -221,6 +233,8 @@ grdc_rfx_encoder_reset(GrdcRfxEncoder *self)
     self->enable_diff = FALSE;
     self->quality = GRDC_RFX_QUALITY_HIGH;
     self->last_frame_timestamp = 0;
+    self->tiles_x = 0;
+    self->tiles_y = 0;
 }
 
 static const guint8 *
@@ -247,10 +261,15 @@ copy_frame_linear(GrdcFrame *frame, GByteArray *buffer)
 static gboolean
 collect_dirty_rects(GrdcRfxEncoder *self,
                     const guint8 *data,
+                    const guint8 *previous,
                     guint stride,
                     GArray *rects)
 {
-    const guint tiles_x = (self->width + 63) / 64;
+    if (self->tiles_x == 0 || self->tiles_y == 0)
+    {
+        return FALSE;
+    }
+
     gboolean has_dirty = FALSE;
 
     for (guint y = 0; y < self->height; y += 64)
@@ -259,15 +278,34 @@ collect_dirty_rects(GrdcRfxEncoder *self,
         for (guint x = 0; x < self->width; x += 64)
         {
             const guint tile_w = MIN(64u, self->width - x);
-            const guint index = (y / 64) * tiles_x + (x / 64);
+            const guint index = (y / 64) * self->tiles_x + (x / 64);
             guint64 hash = hash_tile(data, stride, x, y, tile_w, tile_h);
             guint64 *stored = &g_array_index(self->tile_hashes, guint64, index);
             if (*stored != hash)
             {
-                RFX_RECT rect = {(UINT16)x, (UINT16)y, (UINT16)tile_w, (UINT16)tile_h};
-                g_array_append_val(rects, rect);
+                gboolean different = TRUE;
+                if (previous != NULL)
+                {
+                    different = FALSE;
+                    for (guint row = 0; row < tile_h; ++row)
+                    {
+                        const guint offset = ((y + row) * stride) + x * 4;
+                        if (memcmp(previous + offset, data + offset, tile_w * 4) != 0)
+                        {
+                            different = TRUE;
+                            break;
+                        }
+                    }
+                }
+
+                if (different)
+                {
+                    RFX_RECT rect = {(UINT16)x, (UINT16)y, (UINT16)tile_w, (UINT16)tile_h};
+                    g_array_append_val(rects, rect);
+                    has_dirty = TRUE;
+                }
+
                 *stored = hash;
-                has_dirty = TRUE;
             }
         }
     }
@@ -335,15 +373,23 @@ grdc_rfx_encoder_encode(GrdcRfxEncoder *self,
     const guint expected_stride = self->width * 4u;
 
     g_autoptr(GArray) rects = g_array_sized_new(FALSE, FALSE, sizeof(RFX_RECT),
-                                                ((self->width + 63) / 64) *
-                                                    ((self->height + 63) / 64));
+                                                self->tiles_x * self->tiles_y);
+
+    const guint8 *previous_linear = (self->previous_frame->len ==
+                                     self->bottom_up_frame->len)
+                                        ? self->previous_frame->data
+                                        : NULL;
 
     if (!self->enable_diff)
     {
+        for (guint idx = 0; idx < self->tile_hashes->len; ++idx)
+        {
+            g_array_index(self->tile_hashes, guint64, idx) = 0;
+        }
         RFX_RECT full = {0, 0, (UINT16)self->width, (UINT16)self->height};
         g_array_append_val(rects, full);
     }
-    else if (!collect_dirty_rects(self, linear_frame, expected_stride, rects))
+    else if (!collect_dirty_rects(self, linear_frame, previous_linear, expected_stride, rects))
     {
         grdc_encoded_frame_configure(output,
                                      self->width,
@@ -412,5 +458,12 @@ grdc_rfx_encoder_encode(GrdcRfxEncoder *self,
     grdc_encoded_frame_set_quality(output, 0, 0, TRUE);
 
     Stream_Free(stream, TRUE);
+
+    if (self->previous_frame->len != self->bottom_up_frame->len)
+    {
+        g_byte_array_set_size(self->previous_frame, self->bottom_up_frame->len);
+    }
+    memcpy(self->previous_frame->data, linear_frame, self->previous_frame->len);
+
     return TRUE;
 }
