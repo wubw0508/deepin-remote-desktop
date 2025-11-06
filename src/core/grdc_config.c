@@ -20,6 +20,7 @@ static gboolean grdc_config_parse_bool(const gchar *value, gboolean *out_value, 
 static gboolean grdc_config_set_mode_from_string(GrdcConfig *self, const gchar *value, GError **error);
 static gboolean grdc_config_set_quality_from_string(GrdcConfig *self, const gchar *value, GError **error);
 
+/* 释放配置对象中持有的动态字符串。 */
 static void
 grdc_config_dispose(GObject *object)
 {
@@ -31,6 +32,7 @@ grdc_config_dispose(GObject *object)
     G_OBJECT_CLASS(grdc_config_parent_class)->dispose(object);
 }
 
+/* 绑定 dispose 钩子。 */
 static void
 grdc_config_class_init(GrdcConfigClass *klass)
 {
@@ -38,6 +40,7 @@ grdc_config_class_init(GrdcConfigClass *klass)
     object_class->dispose = grdc_config_dispose;
 }
 
+/* 设置配置缺省值，包括监听地址、分辨率等。 */
 static void
 grdc_config_init(GrdcConfig *self)
 {
@@ -51,12 +54,14 @@ grdc_config_init(GrdcConfig *self)
     self->base_dir = g_get_current_dir();
 }
 
+/* 构造新的配置实例。 */
 GrdcConfig *
 grdc_config_new(void)
 {
     return g_object_new(GRDC_TYPE_CONFIG, NULL);
 }
 
+/* 将字符串解析为布尔值，用于配置文件处理。 */
 static gboolean
 grdc_config_parse_bool(const gchar *value, gboolean *out_value, GError **error)
 {
@@ -84,6 +89,7 @@ grdc_config_parse_bool(const gchar *value, gboolean *out_value, GError **error)
     return FALSE;
 }
 
+/* 根据名称切换编码模式。 */
 static gboolean
 grdc_config_set_mode_from_string(GrdcConfig *self, const gchar *value, GError **error)
 {
@@ -109,6 +115,7 @@ grdc_config_set_mode_from_string(GrdcConfig *self, const gchar *value, GError **
     return FALSE;
 }
 
+/* 根据名称设置编码质量。 */
 static gboolean
 grdc_config_set_quality_from_string(GrdcConfig *self, const gchar *value, GError **error)
 {
@@ -139,6 +146,7 @@ grdc_config_set_quality_from_string(GrdcConfig *self, const gchar *value, GError
     return FALSE;
 }
 
+/* 把相对路径转换为绝对路径，便于后续加载证书等资源。 */
 static gchar *
 grdc_config_resolve_path(GrdcConfig *self, const gchar *value)
 {
@@ -159,6 +167,7 @@ grdc_config_resolve_path(GrdcConfig *self, const gchar *value)
     return canonical;
 }
 
+/* 读取 ini 配置文件的所有段并写入当前实例。 */
 static gboolean
 grdc_config_load_from_key_file(GrdcConfig *self, GKeyFile *keyfile, GError **error)
 {
@@ -251,6 +260,7 @@ grdc_config_load_from_key_file(GrdcConfig *self, GKeyFile *keyfile, GError **err
     return TRUE;
 }
 
+/* 从磁盘加载配置文件并返回解析结果。 */
 GrdcConfig *
 grdc_config_new_from_file(const gchar *path, GError **error)
 {
@@ -278,6 +288,7 @@ grdc_config_new_from_file(const gchar *path, GError **error)
     return config;
 }
 
+/* 用于在 CLI 合并时更新字符串字段。 */
 static gboolean
 grdc_config_set_string(gchar **target, const gchar *value)
 {
@@ -290,6 +301,7 @@ grdc_config_set_string(gchar **target, const gchar *value)
     return TRUE;
 }
 
+/* 基于配置根目录解析 CLI 提供的路径。 */
 static gboolean
 grdc_config_set_path(GrdcConfig *self, gchar **target, const gchar *value)
 {
@@ -308,6 +320,7 @@ grdc_config_set_path(GrdcConfig *self, gchar **target, const gchar *value)
 }
 
 
+/* 合并 CLI 选项，优先级高于配置文件。 */
 gboolean
 grdc_config_merge_cli(GrdcConfig *self,
                       const gchar *bind_address,
@@ -394,6 +407,7 @@ grdc_config_merge_cli(GrdcConfig *self,
     return TRUE;
 }
 
+/* 读取监听地址。 */
 const gchar *
 grdc_config_get_bind_address(GrdcConfig *self)
 {
@@ -401,6 +415,7 @@ grdc_config_get_bind_address(GrdcConfig *self)
     return self->bind_address;
 }
 
+/* 读取监听端口。 */
 guint16
 grdc_config_get_port(GrdcConfig *self)
 {
@@ -408,6 +423,7 @@ grdc_config_get_port(GrdcConfig *self)
     return self->port;
 }
 
+/* 读取证书路径。 */
 const gchar *
 grdc_config_get_certificate_path(GrdcConfig *self)
 {
@@ -415,6 +431,7 @@ grdc_config_get_certificate_path(GrdcConfig *self)
     return self->certificate_path;
 }
 
+/* 读取私钥路径。 */
 const gchar *
 grdc_config_get_private_key_path(GrdcConfig *self)
 {
@@ -422,6 +439,7 @@ grdc_config_get_private_key_path(GrdcConfig *self)
     return self->private_key_path;
 }
 
+/* 获取采集宽度。 */
 guint
 grdc_config_get_capture_width(GrdcConfig *self)
 {
@@ -429,6 +447,7 @@ grdc_config_get_capture_width(GrdcConfig *self)
     return self->encoding.width;
 }
 
+/* 获取采集高度。 */
 guint
 grdc_config_get_capture_height(GrdcConfig *self)
 {
@@ -436,6 +455,7 @@ grdc_config_get_capture_height(GrdcConfig *self)
     return self->encoding.height;
 }
 
+/* 暴露编码选项结构体。 */
 const GrdcEncodingOptions *
 grdc_config_get_encoding_options(GrdcConfig *self)
 {

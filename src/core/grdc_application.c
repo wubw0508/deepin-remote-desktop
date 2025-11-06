@@ -24,6 +24,7 @@ struct _GrdcApplication
 
 G_DEFINE_TYPE(GrdcApplication, grdc_application, G_TYPE_OBJECT)
 
+/* 释放主循环、监听器等运行期资源，确保干净退出。 */
 static void
 grdc_application_dispose(GObject *object)
 {
@@ -61,6 +62,7 @@ grdc_application_dispose(GObject *object)
     G_OBJECT_CLASS(grdc_application_parent_class)->dispose(object);
 }
 
+/* 最终清理阶段，释放剩余引用。 */
 static void
 grdc_application_finalize(GObject *object)
 {
@@ -69,6 +71,7 @@ grdc_application_finalize(GObject *object)
     G_OBJECT_CLASS(grdc_application_parent_class)->finalize(object);
 }
 
+/* 信号回调：收到终止信号时请求主循环退出。 */
 static gboolean
 grdc_application_on_signal(gpointer user_data)
 {
@@ -83,6 +86,7 @@ grdc_application_on_signal(gpointer user_data)
     return G_SOURCE_CONTINUE;
 }
 
+/* 启动 RDP 监听器，并将 TLS、编码运行时串联起来。 */
 static gboolean
 grdc_application_start_listener(GrdcApplication *self, GError **error)
 {
@@ -147,11 +151,12 @@ grdc_application_start_listener(GrdcApplication *self, GError **error)
     return TRUE;
 }
 
+/* 解析 CLI 选项，并与配置文件合并。 */
 static gboolean
 grdc_application_parse_options(GrdcApplication *self, gint *argc, gchar ***argv, GError **error)
 {
     gchar *bind_address = NULL;
-    gint port = 3390;
+    gint port = 0;
     gchar *cert_path = NULL;
     gchar *key_path = NULL;
     gchar *config_path = NULL;
@@ -164,7 +169,7 @@ grdc_application_parse_options(GrdcApplication *self, gint *argc, gchar ***argv,
 
     GOptionEntry entries[] = {
         {"bind-address", 'b', 0, G_OPTION_ARG_STRING, &bind_address, "Bind address (default 0.0.0.0)", "ADDR"},
-        {"port", 'p', 0, G_OPTION_ARG_INT, &port, "Bind port (default 3390)", "PORT"},
+        {"port", 'p', 0, G_OPTION_ARG_INT, &port, "Bind port (default 3390 unless config overrides)", "PORT"},
         {"cert", 0, 0, G_OPTION_ARG_STRING, &cert_path, "TLS certificate PEM path", "FILE"},
         {"key", 0, 0, G_OPTION_ARG_STRING, &key_path, "TLS private key PEM path", "FILE"},
         {"config", 'c', 0, G_OPTION_ARG_STRING, &config_path, "Configuration file path (ini)", "FILE"},
@@ -262,6 +267,7 @@ grdc_application_parse_options(GrdcApplication *self, gint *argc, gchar ***argv,
     return TRUE;
 }
 
+/* 初始化对象默认值。 */
 static void
 grdc_application_init(GrdcApplication *self)
 {
@@ -270,6 +276,7 @@ grdc_application_init(GrdcApplication *self)
     self->tls_credentials = NULL;
 }
 
+/* 绑定类虚函数。 */
 static void
 grdc_application_class_init(GrdcApplicationClass *klass)
 {
@@ -278,12 +285,14 @@ grdc_application_class_init(GrdcApplicationClass *klass)
     object_class->finalize = grdc_application_finalize;
 }
 
+/* 对外构造函数。 */
 GrdcApplication *
 grdc_application_new(void)
 {
     return g_object_new(GRDC_TYPE_APPLICATION, NULL);
 }
 
+/* 应用入口：解析参数、启动监听、运行主循环。 */
 int
 grdc_application_run(GrdcApplication *self, int argc, char **argv, GError **error)
 {

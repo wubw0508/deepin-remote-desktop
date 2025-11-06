@@ -25,7 +25,7 @@
 
 ### 4. 输入层
 - `input/grdc_input_dispatcher`：键鼠事件注入入口，管理 X11 注入后端与 FreeRDP 回调。
-- `input/grdc_x11_input`：基于 XTest 的实际注入实现，负责键盘、鼠标、滚轮事件。
+- `input/grdc_x11_input`：基于 XTest 的实际注入实现，负责键盘、鼠标、滚轮事件，并在启动时读取真实桌面分辨率、根据编码流尺寸动态缩放坐标。
 
 ### 5. 传输层
 - `transport/grdc_rdp_listener`：FreeRDP 监听生命周期、Peer 接入、会话轮询。

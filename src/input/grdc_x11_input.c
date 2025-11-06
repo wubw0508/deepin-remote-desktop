@@ -30,6 +30,7 @@ G_DEFINE_TYPE(GrdcX11Input, grdc_x11_input, G_TYPE_OBJECT)
 static gboolean grdc_x11_input_open_display(GrdcX11Input *self, GError **error);
 static void grdc_x11_input_close_display(GrdcX11Input *self);
 
+/* 对象销毁时停止后台线程并释放互斥锁。 */
 static void
 grdc_x11_input_dispose(GObject *object)
 {
@@ -40,6 +41,7 @@ grdc_x11_input_dispose(GObject *object)
     G_OBJECT_CLASS(grdc_x11_input_parent_class)->dispose(object);
 }
 
+/* 绑定 dispose 钩子。 */
 static void
 grdc_x11_input_class_init(GrdcX11InputClass *klass)
 {
@@ -47,26 +49,29 @@ grdc_x11_input_class_init(GrdcX11InputClass *klass)
     object_class->dispose = grdc_x11_input_dispose;
 }
 
+/* 初始化默认值，真实尺寸会在启动时根据显示与编码流写入。 */
 static void
 grdc_x11_input_init(GrdcX11Input *self)
 {
     g_mutex_init(&self->lock);
     self->display = NULL;
     self->screen = 0;
-    self->desktop_width = 1920;
-    self->desktop_height = 1080;
-    self->stream_width = 1920;
-    self->stream_height = 1080;
+    self->desktop_width = 0;
+    self->desktop_height = 0;
+    self->stream_width = 0;
+    self->stream_height = 0;
     self->running = FALSE;
     self->keyboard_layout = 0;
 }
 
+/* 构造输入后端。 */
 GrdcX11Input *
 grdc_x11_input_new(void)
 {
     return g_object_new(GRDC_TYPE_X11_INPUT, NULL);
 }
 
+/* 打开 X11 Display，并查询屏幕大小、键盘布局。 */
 static gboolean
 grdc_x11_input_open_display(GrdcX11Input *self, GError **error)
 {
@@ -111,6 +116,14 @@ grdc_x11_input_open_display(GrdcX11Input *self, GError **error)
     {
         self->desktop_height = 1080;
     }
+    if (self->stream_width == 0)
+    {
+        self->stream_width = self->desktop_width;
+    }
+    if (self->stream_height == 0)
+    {
+        self->stream_height = self->desktop_height;
+    }
 
     self->keyboard_layout = freerdp_keyboard_init(0);
     if (self->keyboard_layout == 0)
@@ -121,6 +134,7 @@ grdc_x11_input_open_display(GrdcX11Input *self, GError **error)
     return TRUE;
 }
 
+/* 关闭 X11 Display 连接。 */
 static void
 grdc_x11_input_close_display(GrdcX11Input *self)
 {
@@ -131,6 +145,7 @@ grdc_x11_input_close_display(GrdcX11Input *self)
     }
 }
 
+/* 启动输入注入器，确保已连接 X11。 */
 gboolean
 grdc_x11_input_start(GrdcX11Input *self, GError **error)
 {
@@ -152,6 +167,7 @@ grdc_x11_input_start(GrdcX11Input *self, GError **error)
     return ok;
 }
 
+/* 停止输入注入器并释放 Display。 */
 void
 grdc_x11_input_stop(GrdcX11Input *self)
 {
@@ -169,6 +185,7 @@ grdc_x11_input_stop(GrdcX11Input *self)
     g_mutex_unlock(&self->lock);
 }
 
+/* 更新编码流尺寸，供坐标映射使用。 */
 void
 grdc_x11_input_update_desktop_size(GrdcX11Input *self, guint width, guint height)
 {
@@ -186,6 +203,7 @@ grdc_x11_input_update_desktop_size(GrdcX11Input *self, guint width, guint height
     g_mutex_unlock(&self->lock);
 }
 
+/* 检查注入器运行状态，失败时填充错误信息。 */
 static gboolean
 grdc_x11_input_check_running(GrdcX11Input *self, GError **error)
 {
@@ -200,6 +218,7 @@ grdc_x11_input_check_running(GrdcX11Input *self, GError **error)
     return TRUE;
 }
 
+/* 将 RDP 键盘事件转换为 X11 事件并注入。 */
 gboolean
 grdc_x11_input_inject_keyboard(GrdcX11Input *self, guint16 flags, guint8 scancode, GError **error)
 {
@@ -234,6 +253,7 @@ grdc_x11_input_inject_keyboard(GrdcX11Input *self, guint16 flags, guint8 scancod
     return TRUE;
 }
 
+/* 目前未实现 Unicode 注入，占位返回成功。 */
 gboolean
 grdc_x11_input_inject_unicode(GrdcX11Input *self, guint16 flags, guint16 codepoint, GError **error)
 {
@@ -245,6 +265,7 @@ grdc_x11_input_inject_unicode(GrdcX11Input *self, guint16 flags, guint16 codepoi
     return TRUE;
 }
 
+/* 将指针标志转换为 XTest 按键 ID。 */
 static int
 grdc_x11_input_pointer_button(guint16 flags, guint16 mask, int button_id)
 {
@@ -257,6 +278,7 @@ grdc_x11_input_pointer_button(guint16 flags, guint16 mask, int button_id)
     return press ? button_id : -button_id;
 }
 
+/* 注入指针移动、按键及滚轮事件，同时处理分辨率缩放。 */
 gboolean
 grdc_x11_input_inject_pointer(GrdcX11Input *self,
                               guint16 flags,

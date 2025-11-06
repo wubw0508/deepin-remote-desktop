@@ -1,5 +1,14 @@
 # 变更记录
 
+## 2025-11-06：配置解析与输入注释优化
+- **修改目的**：确保 `--config` 中的监听端口等配置不会被 CLI 默认值覆盖，同时让 X11 输入模块移除硬编码分辨率并补齐函数级注释，便于后续维护。
+- **修改范围**：`core/grdc_application.c`、`core/grdc_config.c`、`input/grdc_x11_input.c`、`doc/architecture.md`、`.codex/plan/input-config-sync.md`。
+- **修改内容**：
+  1. CLI 端口默认值改为“未指定”语义，仅在用户显式传参时覆盖配置文件；补充应用、配置模块的函数注释。
+  2. `grdc_x11_input` 在启动时读取真实桌面分辨率，若未收到编码流尺寸则使用该值作为初始映射，彻底移除 1920×1080 固定值，并为所有函数添加用途说明。
+  3. 架构文档补充输入模块动态缩放行为，计划文件记录任务背景。
+- **项目影响**：通过 `--config` 设置的端口、TLS 等字段将保持优先生效，输入注入日志更易追踪，指针映射在异常分辨率下也能准确缩放。
+
 ## 2025-11-06：Remmina 分辨率强制同步
 - **修改目的**：复用 `rdp-cpp` `c982bcce` 提交思路，确保客户端在会话激活时被强制回写为服务器实际桌面尺寸，规避 Remmina 新版本报错 `Invalid surface bits command rectangle`。
 - **修改范围**：`session/grdc_rdp_session.c`、`doc/architecture.md`、`.codex/plan/remmina-compatibility.md`。
