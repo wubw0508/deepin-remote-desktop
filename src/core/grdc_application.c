@@ -9,6 +9,7 @@
 #include "security/grdc_tls_credentials.h"
 #include "core/grdc_config.h"
 #include "core/grdc_server_runtime.h"
+#include "utils/grdc_log.h"
 
 struct _GrdcApplication
 {
@@ -55,7 +56,7 @@ grdc_application_log_effective_config(GrdcApplication *self)
         return;
     }
 
-    g_message("Effective capture geometry %ux%u, encoder=%s, frame diff %s",
+    GRDC_LOG_MESSAGE("Effective capture geometry %ux%u, encoder=%s, frame diff %s",
               encoding_opts->width,
               encoding_opts->height,
               grdc_application_mode_to_string(encoding_opts->mode),
@@ -117,7 +118,7 @@ grdc_application_on_signal(gpointer user_data)
 
     if (self->loop != NULL && g_main_loop_is_running(self->loop))
     {
-        g_message("Termination signal received, shutting down main loop");
+        GRDC_LOG_MESSAGE("Termination signal received, shutting down main loop");
         g_main_loop_quit(self->loop);
     }
 
@@ -277,7 +278,7 @@ grdc_application_parse_options(GrdcApplication *self, gint *argc, gchar ***argv,
             g_clear_pointer(&nla_password, g_free);
             return FALSE;
         }
-        g_message("Configuration loaded from %s", config_path);
+        GRDC_LOG_MESSAGE("Configuration loaded from %s", config_path);
     }
     else if (self->config == NULL)
     {
@@ -335,10 +336,11 @@ grdc_application_init(GrdcApplication *self)
     self->config = grdc_config_new();
     self->runtime = grdc_server_runtime_new();
     self->tls_credentials = NULL;
+    grdc_log_init();
 
     if (!winpr_InitializeSSL(WINPR_SSL_INIT_DEFAULT))
     {
-        g_warning("Failed to initialize WinPR SSL context, NTLM may be unavailable");
+        GRDC_LOG_WARNING("Failed to initialize WinPR SSL context, NTLM may be unavailable");
     }
 }
 
@@ -389,14 +391,14 @@ grdc_application_run(GrdcApplication *self, int argc, char **argv, GError **erro
         return EXIT_FAILURE;
     }
 
-    g_message("RDP service listening on %s:%u",
+    GRDC_LOG_MESSAGE("RDP service listening on %s:%u",
               grdc_config_get_bind_address(self->config),
               grdc_config_get_port(self->config));
-    g_message("Loaded TLS credentials (cert=%s, key=%s)",
+    GRDC_LOG_MESSAGE("Loaded TLS credentials (cert=%s, key=%s)",
               grdc_config_get_certificate_path(self->config),
               grdc_config_get_private_key_path(self->config));
     g_main_loop_run(self->loop);
 
-    g_message("Main loop terminated");
+    GRDC_LOG_MESSAGE("Main loop terminated");
     return EXIT_SUCCESS;
 }

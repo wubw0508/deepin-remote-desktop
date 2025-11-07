@@ -14,6 +14,7 @@
 #include <sys/shm.h>
 
 #include "utils/grdc_frame.h"
+#include "utils/grdc_log.h"
 
 typedef struct
 {
@@ -245,7 +246,7 @@ grdc_x11_capture_start(GrdcX11Capture *self,
     self->thread = g_thread_new("grdc-x11-capture", grdc_x11_capture_thread, g_object_ref(self));
 
     g_mutex_unlock(&self->state_mutex);
-    g_message("X11 capture started at %ux%u", self->width, self->height);
+    GRDC_LOG_MESSAGE("X11 capture started at %ux%u", self->width, self->height);
     return TRUE;
 }
 
@@ -322,7 +323,7 @@ grdc_x11_capture_stop(GrdcX11Capture *self)
     grdc_x11_capture_cleanup_locked(self);
     g_mutex_unlock(&self->state_mutex);
 
-    g_message("X11 capture stopped");
+    GRDC_LOG_MESSAGE("X11 capture stopped");
 }
 
 gboolean
@@ -403,7 +404,7 @@ grdc_x11_capture_thread(gpointer user_data)
 
         if (!XShmGetImage(display, root, image, 0, 0, AllPlanes))
         {
-            g_warning("XShmGetImage failed, retrying");
+            GRDC_LOG_WARNING("XShmGetImage failed, retrying");
             g_usleep((gulong)target_interval);
             continue;
         }

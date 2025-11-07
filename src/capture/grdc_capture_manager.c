@@ -3,6 +3,7 @@
 #include <gio/gio.h>
 
 #include "capture/grdc_x11_capture.h"
+#include "utils/grdc_log.h"
 
 struct _GrdcCaptureManager
 {
@@ -70,7 +71,7 @@ grdc_capture_manager_start(GrdcCaptureManager *self, guint width, guint height, 
         return FALSE;
     }
 
-    g_message("Capture manager entering running state");
+    GRDC_LOG_MESSAGE("Capture manager entering running state");
     self->running = TRUE;
     return TRUE;
 }
@@ -88,7 +89,7 @@ grdc_capture_manager_stop(GrdcCaptureManager *self)
     grdc_x11_capture_stop(self->x11_capture);
     grdc_frame_queue_stop(self->queue);
 
-    g_message("Capture manager leaving running state");
+    GRDC_LOG_MESSAGE("Capture manager leaving running state");
     self->running = FALSE;
 }
 

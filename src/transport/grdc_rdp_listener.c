@@ -13,6 +13,7 @@
 #include "session/grdc_rdp_session.h"
 #include "security/grdc_tls_credentials.h"
 #include "security/grdc_nla_sam.h"
+#include "utils/grdc_log.h"
 
 typedef struct
 {
@@ -239,7 +240,7 @@ grdc_rdp_peer_keyboard_event(rdpInput *input, UINT16 flags, UINT8 code)
     g_autoptr(GError) error = NULL;
     if (!grdc_input_dispatcher_handle_keyboard(dispatcher, flags, code, &error) && error != NULL)
     {
-        g_warning("Keyboard injection failed: %s", error->message);
+        GRDC_LOG_WARNING("Keyboard injection failed: %s", error->message);
     }
     return TRUE;
 }
@@ -256,7 +257,7 @@ grdc_rdp_peer_unicode_event(rdpInput *input, UINT16 flags, UINT16 code)
     g_autoptr(GError) error = NULL;
     if (!grdc_input_dispatcher_handle_unicode(dispatcher, flags, code, &error) && error != NULL)
     {
-        g_debug("Unicode injection not supported: %s", error->message);
+        GRDC_LOG_DEBUG("Unicode injection not supported: %s", error->message);
     }
     return TRUE;
 }
@@ -273,7 +274,7 @@ grdc_rdp_peer_pointer_event(rdpInput *input, UINT16 flags, UINT16 x, UINT16 y)
     g_autoptr(GError) error = NULL;
     if (!grdc_input_dispatcher_handle_pointer(dispatcher, flags, x, y, &error) && error != NULL)
     {
-        g_warning("Pointer injection failed: %s", error->message);
+        GRDC_LOG_WARNING("Pointer injection failed: %s", error->message);
     }
     return TRUE;
 }
@@ -417,13 +418,13 @@ grdc_listener_peer_accepted(freerdp_listener *listener, freerdp_peer *client)
 
     if (!freerdp_peer_context_new(client))
     {
-        g_warning("Failed to allocate peer %s context", client->hostname);
+        GRDC_LOG_WARNING("Failed to allocate peer %s context", client->hostname);
         return FALSE;
     }
 
     if (self->sessions->len > 0)
     {
-        g_warning("Rejecting connection from %s: session already active", client->hostname);
+        GRDC_LOG_WARNING("Rejecting connection from %s: session already active", client->hostname);
         return FALSE;
     }
 
@@ -432,11 +433,11 @@ grdc_listener_peer_accepted(freerdp_listener *listener, freerdp_peer *client)
     {
         if (settings_error != NULL)
         {
-            g_warning("Failed to configure peer %s settings: %s", client->hostname, settings_error->message);
+            GRDC_LOG_WARNING("Failed to configure peer %s settings: %s", client->hostname, settings_error->message);
         }
         else
         {
-            g_warning("Failed to configure peer %s settings", client->hostname);
+            GRDC_LOG_WARNING("Failed to configure peer %s settings", client->hostname);
         }
         return FALSE;
     }
@@ -447,14 +448,14 @@ grdc_listener_peer_accepted(freerdp_listener *listener, freerdp_peer *client)
 
     if (client->Initialize == NULL || !client->Initialize(client))
     {
-        g_warning("Failed to initialize peer %s", client->hostname);
+        GRDC_LOG_WARNING("Failed to initialize peer %s", client->hostname);
         return FALSE;
     }
 
     GrdcRdpPeerContext *ctx = (GrdcRdpPeerContext *)client->context;
     if (ctx == NULL || ctx->session == NULL)
     {
-        g_warning("Peer %s context did not expose a session", client->hostname);
+        GRDC_LOG_WARNING("Peer %s context did not expose a session", client->hostname);
         return FALSE;
     }
 
@@ -463,7 +464,7 @@ grdc_listener_peer_accepted(freerdp_listener *listener, freerdp_peer *client)
 
     if (!grdc_rdp_session_start_event_thread(ctx->session))
     {
-        g_warning("Failed to start event thread for peer %s", client->hostname);
+        GRDC_LOG_WARNING("Failed to start event thread for peer %s", client->hostname);
         return FALSE;
     }
 
@@ -480,7 +481,7 @@ grdc_listener_peer_accepted(freerdp_listener *listener, freerdp_peer *client)
         input->ExtendedMouseEvent = grdc_rdp_peer_pointer_event;
     }
 
-    g_message("Accepted connection from %s", client->hostname);
+    GRDC_LOG_MESSAGE("Accepted connection from %s", client->hostname);
     return TRUE;
 }
 
@@ -497,7 +498,7 @@ grdc_rdp_listener_iterate(gpointer user_data)
     {
         if (!self->listener->CheckFileDescriptor(self->listener))
         {
-            g_warning("Listener CheckFileDescriptor failed");
+            GRDC_LOG_WARNING("Listener CheckFileDescriptor failed");
         }
     }
 
@@ -555,7 +556,7 @@ grdc_rdp_listener_open(GrdcRdpListener *self, GError **error)
         return FALSE;
     }
 
-    g_message("Listener event loop armed for %s:%u (tick=16ms)",
+    GRDC_LOG_MESSAGE("Listener event loop armed for %s:%u (tick=16ms)",
               self->bind_address,
               self->port);
 

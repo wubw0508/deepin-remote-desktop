@@ -10,6 +10,8 @@
 
 #include <winpr/ntlm.h>
 
+#include "utils/grdc_log.h"
+
 struct _GrdcNlaSamFile
 {
     gchar *path;
@@ -177,7 +179,7 @@ grdc_nla_sam_hash_password(const gchar *password)
     uint8_t hash[16];
     if (!NTOWFv1A((LPSTR)password, strlen(password), hash))
     {
-        g_warning("Failed to initialize NT hash for NLA credentials");
+        GRDC_LOG_WARNING("Failed to initialize NT hash for NLA credentials");
         return NULL;
     }
 

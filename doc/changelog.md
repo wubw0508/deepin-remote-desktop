@@ -8,6 +8,7 @@
   2. 新增 `grdc_nla_sam` 模块生成临时 SAM 文件，监听器为每个 peer 注入 `FreeRDP_NtlmSamFile`，并在 PostConnect/析构时删除文件。
   3. 监听器切换到 `NlaSecurity=TRUE`、`TlsSecurity=FALSE`，TLS 模块仅负责证书注入；文档补充安全链路 mermaid 图与配置说明。
   4. 后续优化：在应用初始化时调用 `winpr_InitializeSSL()` 以启用 legacy 摘要算法，监听器仅缓存 NT 哈希并擦除明文密码，`grdc_nla_sam` 在写入后清零缓冲并校验 `NTOWFv1A()` 结果，避免 MIC 校验因哈希失败而触发。
+  5. 所有 `g_message/g_warning/g_debug` 调用切换为 `GRDC_LOG_*` 宏，内部统一使用 `g_log_structured_standard` 自动附带 `__FILE__/__LINE__`，日志输出可直接定位源文件行号。
 - **影响**：服务端现在要求显式提供 NLA 凭据；凭据泄露范围限定在内存+一次性 SAM 文件，客户端需支持 NLA（CredSSP）才能接入。
 
 ## 2025-11-06：日志与注释审视

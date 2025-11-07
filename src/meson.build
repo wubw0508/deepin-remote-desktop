@@ -35,7 +35,8 @@ core_sources = files(
   'session/grdc_rdp_session.c',
   'transport/grdc_rdp_listener.c',
   'security/grdc_tls_credentials.c',
-  'security/grdc_nla_sam.c'
+  'security/grdc_nla_sam.c',
+  'utils/grdc_log.c'
 )
 
 grdc_media = static_library(

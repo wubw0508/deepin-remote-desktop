@@ -2,6 +2,8 @@
 
 #include <gio/gio.h>
 
+#include "utils/grdc_log.h"
+
 #define ENCODED_QUEUE_STOP ((gpointer)GINT_TO_POINTER(0x1))
 
 static void grdc_server_runtime_start_encoder(GrdcServerRuntime *self);
@@ -126,7 +128,7 @@ grdc_server_runtime_prepare_stream(GrdcServerRuntime *self,
 
     grdc_server_runtime_start_encoder(self);
 
-    g_message("Server runtime prepared stream with geometry %ux%u",
+    GRDC_LOG_MESSAGE("Server runtime prepared stream with geometry %ux%u",
               encoding_options->width,
               encoding_options->height);
     return TRUE;
@@ -147,7 +149,7 @@ grdc_server_runtime_stop(GrdcServerRuntime *self)
 
     if (had_stream)
     {
-        g_message("Server runtime stopped and released capture/encoding resources");
+        GRDC_LOG_MESSAGE("Server runtime stopped and released capture/encoding resources");
     }
 }
 
@@ -279,7 +281,7 @@ grdc_server_runtime_encoder_thread(gpointer user_data)
             }
             if (error != NULL)
             {
-                g_warning("Encoder thread failed to obtain frame: %s", error->message);
+                GRDC_LOG_WARNING("Encoder thread failed to obtain frame: %s", error->message);
             }
             if (!g_atomic_int_get(&self->encoder_running))
             {
@@ -293,7 +295,7 @@ grdc_server_runtime_encoder_thread(gpointer user_data)
         {
             if (error != NULL)
             {
-                g_warning("Encoder thread failed to encode frame: %s", error->message);
+                GRDC_LOG_WARNING("Encoder thread failed to encode frame: %s", error->message);
             }
             g_object_unref(frame);
             continue;

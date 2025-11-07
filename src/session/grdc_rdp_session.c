@@ -11,6 +11,7 @@
 #include <winpr/synch.h>
 
 #include "core/grdc_server_runtime.h"
+#include "utils/grdc_log.h"
 
 struct _GrdcRdpSession
 {
@@ -107,7 +108,7 @@ grdc_rdp_session_set_peer_state(GrdcRdpSession *self, const gchar *state)
     g_clear_pointer(&self->state, g_free);
     self->state = g_strdup(state != NULL ? state : "unknown");
 
-    g_message("Session %s transitioned to state %s", self->peer_address, self->state);
+    GRDC_LOG_MESSAGE("Session %s transitioned to state %s", self->peer_address, self->state);
 }
 
 void
@@ -173,7 +174,7 @@ grdc_rdp_session_start_event_thread(GrdcRdpSession *self)
         self->stop_event = CreateEvent(NULL, TRUE, FALSE, NULL);
         if (self->stop_event == NULL)
         {
-            g_warning("Session %s failed to create stop event", self->peer_address);
+            GRDC_LOG_WARNING("Session %s failed to create stop event", self->peer_address);
             return FALSE;
         }
     }
@@ -182,7 +183,7 @@ grdc_rdp_session_start_event_thread(GrdcRdpSession *self)
     self->event_thread = g_thread_new("grdc-rdp-io", grdc_rdp_session_event_thread, g_object_ref(self));
     if (self->event_thread != NULL)
     {
-        g_message("Session %s started event thread", self->peer_address);
+        GRDC_LOG_MESSAGE("Session %s started event thread", self->peer_address);
     }
     return TRUE;
 }
@@ -200,7 +201,7 @@ grdc_rdp_session_stop_event_thread(GrdcRdpSession *self)
         }
         g_thread_join(self->event_thread);
         self->event_thread = NULL;
-        g_message("Session %s stopped event thread", self->peer_address);
+        GRDC_LOG_MESSAGE("Session %s stopped event thread", self->peer_address);
     }
 
     if (self->stop_event != NULL)
@@ -223,7 +224,7 @@ grdc_rdp_session_pump(GrdcRdpSession *self)
 
     if (!g_atomic_int_get(&self->connection_alive))
     {
-        g_message("Session %s connection closed", self->peer_address);
+        GRDC_LOG_MESSAGE("Session %s connection closed", self->peer_address);
         return FALSE;
     }
 
@@ -259,7 +260,7 @@ grdc_rdp_session_pump(GrdcRdpSession *self)
 
         if (error != NULL)
         {
-            g_warning("Session %s failed to pull encoded frame: %s", self->peer_address, error->message);
+            GRDC_LOG_WARNING("Session %s failed to pull encoded frame: %s", self->peer_address, error->message);
         }
         return TRUE;
     }
@@ -275,7 +276,7 @@ grdc_rdp_session_pump(GrdcRdpSession *self)
     {
         if (send_error != NULL)
         {
-            g_warning("Session %s failed to send frame: %s", self->peer_address, send_error->message);
+            GRDC_LOG_WARNING("Session %s failed to send frame: %s", self->peer_address, send_error->message);
         }
     }
 
@@ -295,7 +296,7 @@ grdc_rdp_session_disconnect(GrdcRdpSession *self, const gchar *reason)
 
     if (reason != NULL)
     {
-        g_message("Disconnecting session %s: %s", self->peer_address, reason);
+        GRDC_LOG_MESSAGE("Disconnecting session %s: %s", self->peer_address, reason);
     }
 
     grdc_rdp_session_stop_event_thread(self);
@@ -368,7 +369,7 @@ grdc_rdp_session_event_thread(gpointer user_data)
 
         if (!peer->CheckFileDescriptor(peer))
         {
-            g_message("Session %s CheckFileDescriptor failed in event thread", self->peer_address);
+            GRDC_LOG_MESSAGE("Session %s CheckFileDescriptor failed in event thread", self->peer_address);
             g_atomic_int_set(&self->connection_alive, 0);
             break;
         }
@@ -409,7 +410,7 @@ grdc_rdp_session_enforce_peer_desktop_size(GrdcRdpSession *self)
     {
         if (!freerdp_settings_set_uint32(settings, FreeRDP_DesktopWidth, desired_width))
         {
-            g_warning("Session %s could not update DesktopWidth to %u",
+            GRDC_LOG_WARNING("Session %s could not update DesktopWidth to %u",
                       self->peer_address,
                       desired_width);
             return;
@@ -421,7 +422,7 @@ grdc_rdp_session_enforce_peer_desktop_size(GrdcRdpSession *self)
     {
         if (!freerdp_settings_set_uint32(settings, FreeRDP_DesktopHeight, desired_height))
         {
-            g_warning("Session %s could not update DesktopHeight to %u",
+            GRDC_LOG_WARNING("Session %s could not update DesktopHeight to %u",
                       self->peer_address,
                       desired_height);
             return;
@@ -442,11 +443,11 @@ grdc_rdp_session_enforce_peer_desktop_size(GrdcRdpSession *self)
 
     if (!update->DesktopResize(context))
     {
-        g_warning("Session %s failed to notify DesktopResize", self->peer_address);
+        GRDC_LOG_WARNING("Session %s failed to notify DesktopResize", self->peer_address);
         return;
     }
 
-    g_message("Session %s enforced desktop resolution to %ux%u",
+    GRDC_LOG_MESSAGE("Session %s enforced desktop resolution to %ux%u",
               self->peer_address,
               desired_width,
               desired_height);

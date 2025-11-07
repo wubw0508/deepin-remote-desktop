@@ -4,6 +4,7 @@
 
 #include "encoding/grdc_raw_encoder.h"
 #include "encoding/grdc_rfx_encoder.h"
+#include "utils/grdc_log.h"
 
 struct _GrdcEncodingManager
 {
@@ -119,7 +120,7 @@ grdc_encoding_manager_prepare(GrdcEncodingManager *self,
 
     self->ready = TRUE;
 
-    g_message("Encoding manager configured for %ux%u stream (mode=%s diff=%s)",
+    GRDC_LOG_MESSAGE("Encoding manager configured for %ux%u stream (mode=%s diff=%s)",
               options->width,
               options->height,
               options->mode == GRDC_ENCODING_MODE_RAW ? "raw" : "rfx",
@@ -137,7 +138,7 @@ grdc_encoding_manager_reset(GrdcEncodingManager *self)
         return;
     }
 
-    g_message("Encoding manager reset");
+    GRDC_LOG_MESSAGE("Encoding manager reset");
     self->frame_width = 0;
     self->frame_height = 0;
     self->mode = GRDC_ENCODING_MODE_RAW;
@@ -195,7 +196,7 @@ grdc_encoding_manager_encode(GrdcEncodingManager *self,
             grdc_encoded_frame_get_data(self->scratch_frame, &payload_len);
             if (payload_len > max_payload)
             {
-                g_message("RFX payload %zu exceeds peer limit %zu, falling back to raw frame",
+                GRDC_LOG_MESSAGE("RFX payload %zu exceeds peer limit %zu, falling back to raw frame",
                           payload_len,
                           max_payload);
                 ok = grdc_raw_encoder_encode(self->raw_encoder, input, self->scratch_frame, error);
