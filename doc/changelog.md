@@ -1,5 +1,14 @@
 # 变更记录
 
+## 2025-11-07：项目更名为 deepin-remote-desktop
+- **目的**：将 GLib 重构版本统一纳入 Deepin Remote Desktop 品牌，避免 “grdc” 历史命名造成混淆。
+- **范围**：`src/` 全量类型/函数/宏/文件、Meson 目标与可执行名、`doc/*.md`、`README.md`、`AGENTS.md` 及相关计划文档。
+- **主要改动**：
+  1. 所有 `grdc` 前缀统一替换为 `drd`（Deepin Remote Desktop），包含 `DrdRdpSession`、`DRD_LOG_*` 等命名。
+  2. 静态库重命名为 `drd-media` / `drd-core`，可执行文件更名为 `deepin-remote-desktop`，Meson 工程名同步更新。
+  3. 文档、计划、README 与开发指南更新说明新品牌，并替换运行命令（`./build/src/deepin-remote-desktop`）。
+- **影响**：构建与启动命令发生变化；外部引用 `grdc` 的脚本需切换到新名称；上游快照中提及的 `grdctl` 不受影响。
+
 ## 2025-11-07：分辨率协商保护
 - **目的**：阻止不支持 `DesktopResize` 的客户端在请求自定义分辨率时触发无限断连，避免日志刷屏并帮助用户定位问题。
 - **范围**：`session/grdc_rdp_session.c`、`transport/grdc_rdp_listener.c`、`doc/architecture.md`、`.codex/plan/client-resolution-alignment.md`。

@@ -1,4 +1,4 @@
-project('glib_codex_rewrite', 'c',
+project('deepin_remote_desktop', 'c',
         version: '0.1.0',
         default_options: [
           'c_std=c17',
@@ -8,7 +8,7 @@ project('glib_codex_rewrite', 'c',
 
 add_project_arguments([
   '-DG_LOG_USE_STRUCTURED=1',
-  '-DG_LOG_DOMAIN="grdc"',
+  '-DG_LOG_DOMAIN="drd"',
   '-D_GNU_SOURCE',
   '-Wno-deprecated-declarations'
 ], language: 'c')

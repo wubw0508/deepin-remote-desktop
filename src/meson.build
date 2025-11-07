@@ -16,46 +16,46 @@ deps = [
 ]
 
 media_sources = files(
-  'capture/grdc_capture_manager.c',
-  'capture/grdc_x11_capture.c',
-  'encoding/grdc_encoding_manager.c',
-  'encoding/grdc_raw_encoder.c',
-  'encoding/grdc_rfx_encoder.c',
-  'input/grdc_input_dispatcher.c',
-  'input/grdc_x11_input.c',
-  'utils/grdc_frame.c',
-  'utils/grdc_frame_queue.c',
-  'utils/grdc_encoded_frame.c'
+  'capture/drd_capture_manager.c',
+  'capture/drd_x11_capture.c',
+  'encoding/drd_encoding_manager.c',
+  'encoding/drd_raw_encoder.c',
+  'encoding/drd_rfx_encoder.c',
+  'input/drd_input_dispatcher.c',
+  'input/drd_x11_input.c',
+  'utils/drd_frame.c',
+  'utils/drd_frame_queue.c',
+  'utils/drd_encoded_frame.c'
 )
 
 core_sources = files(
-  'core/grdc_application.c',
-  'core/grdc_server_runtime.c',
-  'core/grdc_config.c',
-  'session/grdc_rdp_session.c',
-  'transport/grdc_rdp_listener.c',
-  'security/grdc_tls_credentials.c',
-  'security/grdc_nla_sam.c',
-  'utils/grdc_log.c'
+  'core/drd_application.c',
+  'core/drd_server_runtime.c',
+  'core/drd_config.c',
+  'session/drd_rdp_session.c',
+  'transport/drd_rdp_listener.c',
+  'security/drd_tls_credentials.c',
+  'security/drd_nla_sam.c',
+  'utils/drd_log.c'
 )
 
-grdc_media = static_library(
-  'grdc-media',
+drd_media = static_library(
+  'drd-media',
   media_sources,
   include_directories: src_inc,
   dependencies: deps
 )
 
-grdc_core = static_library(
-  'grdc-core',
+drd_core = static_library(
+  'drd-core',
   core_sources,
   include_directories: src_inc,
   dependencies: deps,
-  link_with: grdc_media
+  link_with: drd_media
 )
 
-executable('grdc-server', ['main.c'],
+executable('deepin-remote-desktop', ['main.c'],
            include_directories: src_inc,
-           link_with: grdc_core,
+           link_with: drd_core,
            dependencies: deps,
            install: false)
