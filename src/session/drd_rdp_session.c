@@ -49,7 +49,6 @@ static gboolean drd_rdp_session_try_submit_graphics(DrdRdpSession *self,
 static void drd_rdp_session_maybe_init_graphics(DrdRdpSession *self);
 static void drd_rdp_session_disable_graphics_pipeline(DrdRdpSession *self,
                                                       const gchar *reason);
-static gpointer drd_rdp_session_event_thread(gpointer user_data);
 static gboolean drd_rdp_session_enforce_peer_desktop_size(DrdRdpSession *self);
 
 static void
@@ -192,7 +191,7 @@ drd_rdp_session_activate(DrdRdpSession *self)
     {
         drd_server_runtime_request_keyframe(self->runtime);
     }
-    drd_rdp_session_start_event_thread(self);
+    // drd_rdp_session_start_event_thread(self);
     return TRUE;
 }
 
@@ -221,15 +220,15 @@ drd_rdp_session_start_event_thread(DrdRdpSession *self)
     }
 
     g_atomic_int_set(&self->connection_alive, 1);
-    self->event_thread = g_thread_new("drd-rdp-io", drd_rdp_session_event_thread, g_object_ref(self));
-    if (self->event_thread != NULL)
-    {
-        DRD_LOG_MESSAGE("Session %s started event thread", self->peer_address);
-    }
+    // self->event_thread = g_thread_new("drd-rdp-io", drd_rdp_session_event_thread, g_object_ref(self));
+    // if (self->event_thread != NULL)
+    // {
+    //     DRD_LOG_MESSAGE("Session %s started event thread", self->peer_address);
+    // }
 
     if (self->vcm != NULL && self->vcm != INVALID_HANDLE_VALUE && self->vcm_thread == NULL)
     {
-        self->vcm_thread = g_thread_new("drd-rdp-vcm", drd_rdp_session_vcm_thread, g_object_ref(self));
+        self->vcm_thread = g_thread_new("drd-rdp-vcm", drd_rdp_session_vcm_thread, self);
     }
 
     return TRUE;
@@ -378,84 +377,9 @@ drd_rdp_session_send_surface_bits(DrdRdpSession *self,
                                    GError **error);
 
 static gpointer
-drd_rdp_session_event_thread(gpointer user_data)
-{
-    DrdRdpSession *self = DRD_RDP_SESSION(user_data);
-    freerdp_peer *peer = self->peer;
-    HANDLE vcm = self->vcm;
-    HANDLE vcm_event = NULL;
-
-    if (vcm != NULL && vcm != INVALID_HANDLE_VALUE)
-    {
-        vcm_event = WTSVirtualChannelManagerGetEventHandle(vcm);
-    }
-
-    if (peer == NULL)
-    {
-        g_atomic_int_set(&self->connection_alive, 0);
-        g_object_unref(self);
-        return NULL;
-    }
-
-    /* 循环等待 stop 事件与 FreeRDP I/O 句柄，确保编码/输入线程协同推进。 */
-    while (TRUE)
-    {
-        HANDLE handles[64];
-        DWORD count = 0;
-
-        if (self->stop_event != NULL)
-        {
-            handles[count++] = self->stop_event;
-        }
-
-        DWORD obtained = 0;
-
-        if (vcm_event != NULL)
-        {
-            handles[count++] = vcm_event;
-        }
-
-        if (peer->GetEventHandles != NULL)
-        {
-            obtained = peer->GetEventHandles(peer, &handles[count], G_N_ELEMENTS(handles) - count);
-        }
-
-        if (obtained == 0)
-        {
-            g_atomic_int_set(&self->connection_alive, 0);
-            break;
-        }
-
-        count += obtained;
-
-        DWORD status = WaitForMultipleObjects(count, handles, FALSE, INFINITE);
-        if (status == WAIT_FAILED)
-        {
-            g_atomic_int_set(&self->connection_alive, 0);
-            break;
-        }
-
-        if (self->stop_event != NULL && status == WAIT_OBJECT_0)
-        {
-            break;
-        }
-
-        if (!peer->CheckFileDescriptor(peer))
-        {
-            DRD_LOG_MESSAGE("Session %s CheckFileDescriptor failed in event thread", self->peer_address);
-            g_atomic_int_set(&self->connection_alive, 0);
-            break;
-        }
-    }
-
-    g_object_unref(self);
-    return NULL;
-}
-
-static gpointer
 drd_rdp_session_vcm_thread(gpointer user_data)
 {
-    DrdRdpSession *self = DRD_RDP_SESSION(user_data);
+    DrdRdpSession *self = g_object_ref(DRD_RDP_SESSION(user_data));
     freerdp_peer *peer = self->peer;
     HANDLE vcm = self->vcm;
     HANDLE channel_event = NULL;
@@ -470,22 +394,31 @@ drd_rdp_session_vcm_thread(gpointer user_data)
 
     while (g_atomic_int_get(&self->connection_alive))
     {
-        HANDLE handles[2];
-        DWORD count = 0;
+        HANDLE events[32];
+        uint32_t peer_events_handles = 0;
+        DWORD n_events = 0;
 
         if (self->stop_event != NULL)
         {
-            handles[count++] = self->stop_event;
+            events[n_events++] = self->stop_event;
         }
         if (channel_event != NULL)
         {
-            handles[count++] = channel_event;
+            events[n_events++] = channel_event;
         }
 
-        DWORD status = WAIT_TIMEOUT;
-        if (count > 0)
+        peer_events_handles = peer->GetEventHandles(peer, &events[n_events], G_N_ELEMENTS(events) - n_events);
+        if (!peer_events_handles)
         {
-            status = WaitForMultipleObjects(count, handles, FALSE, 100);
+            g_message ("[RDP] peer_events_handles 0, stopping session");
+            g_atomic_int_set(&self->connection_alive, 0);
+            break;
+        }
+        n_events += peer_events_handles;
+        DWORD status = WAIT_TIMEOUT;
+        if (n_events > 0)
+        {
+            status = WaitForMultipleObjects(n_events, events, FALSE, INFINITE);
         }
 
         if (status == WAIT_FAILED)
@@ -493,12 +426,12 @@ drd_rdp_session_vcm_thread(gpointer user_data)
             break;
         }
 
-        if (self->stop_event != NULL && status == WAIT_OBJECT_0)
+        if (!peer->CheckFileDescriptor (peer))
         {
+            g_message ("[RDP] CheckFileDescriptor error, stopping session");
+            g_atomic_int_set(&self->connection_alive, 0);
             break;
         }
-
-
 
         if (!peer->connected)
         {
@@ -510,28 +443,29 @@ drd_rdp_session_vcm_thread(gpointer user_data)
             continue;
         }
 
-        BYTE drdynvc_state = WTSVirtualChannelManagerGetDrdynvcState(vcm);
-        if (drdynvc_state == DRDYNVC_STATE_NONE)
+        switch ( WTSVirtualChannelManagerGetDrdynvcState(vcm))
         {
-            if (channel_event != NULL)
+        case DRDYNVC_STATE_NONE:
+            SetEvent(channel_event);
+            break;
+        case DRDYNVC_STATE_READY:
+            if (self->graphics_pipeline && g_atomic_int_get(&self->connection_alive))
             {
-                SetEvent(channel_event);
+                drd_rdp_graphics_pipeline_maybe_init(self->graphics_pipeline);
             }
-            continue;
+            break;
         }
-
-        if (drdynvc_state == DRDYNVC_STATE_READY &&
-            self->graphics_pipeline != NULL && !self->graphics_pipeline_ready)
+        if (!g_atomic_int_get(&self->connection_alive))
         {
-            drd_rdp_graphics_pipeline_maybe_init(self->graphics_pipeline);
+            break;
         }
-
         if (channel_event != NULL &&
             WaitForSingleObject(channel_event, 0) == WAIT_OBJECT_0)
         {
             if (!WTSVirtualChannelManagerCheckFileDescriptor(vcm))
             {
                 DRD_LOG_MESSAGE("Session %s failed to check VCM descriptor", self->peer_address);
+                g_atomic_int_set(&self->connection_alive, 0);
                 break;
             }
         }

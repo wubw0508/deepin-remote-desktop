@@ -532,6 +532,8 @@ drd_listener_peer_accepted(freerdp_listener *listener, freerdp_peer *client)
         DRD_LOG_WARNING("Peer %s failed to create virtual channel manager", client->hostname);
         return FALSE;
     }
+    // WTSVirtualChannelManagerSetDVCCreationCallback (ctx->vcm, dvc_creation_status,
+    //                                               client->context);
 
     drd_rdp_session_set_virtual_channel_manager(ctx->session, ctx->vcm);
 
