@@ -526,7 +526,7 @@ drd_configure_peer_settings(DrdRdpListener *self, freerdp_peer *client, GError *
 }
 
 static BOOL
-drd_listener_peer_accepted(freerdp_listener *listener, freerdp_peer *client)
+drd_listener_peer_accepted(freerdp_listener *listener, freerdp_peer *peer)
 {
     DrdRdpListener *self = (DrdRdpListener *)listener->param1;
     if (self == NULL)
@@ -534,62 +534,60 @@ drd_listener_peer_accepted(freerdp_listener *listener, freerdp_peer *client)
         return FALSE;
     }
 
-    client->ContextSize = sizeof(DrdRdpPeerContext);
-    client->ContextNew = drd_peer_context_new;
-    client->ContextFree = drd_peer_context_free;
+    peer->ContextSize = sizeof(DrdRdpPeerContext);
+    peer->ContextNew = drd_peer_context_new;
+    peer->ContextFree = drd_peer_context_free;
 
-    if (!freerdp_peer_context_new(client))
+    if (!freerdp_peer_context_new(peer))
     {
-        DRD_LOG_WARNING("Failed to allocate peer %s context", client->hostname);
+        DRD_LOG_WARNING("Failed to allocate peer %s context", peer->hostname);
         return FALSE;
     }
 
     if (drd_rdp_listener_has_active_session(self))
     {
-        DRD_LOG_WARNING("Rejecting connection from %s: session already active", client->hostname);
+        DRD_LOG_WARNING("Rejecting connection from %s: session already active", peer->hostname);
         return FALSE;
     }
 
     g_autoptr(GError) settings_error = NULL;
-    if (!drd_configure_peer_settings(self, client, &settings_error))
+    if (!drd_configure_peer_settings(self, peer, &settings_error))
     {
         if (settings_error != NULL)
         {
-            DRD_LOG_WARNING("Failed to configure peer %s settings: %s", client->hostname, settings_error->message);
+            DRD_LOG_WARNING("Failed to configure peer %s settings: %s", peer->hostname, settings_error->message);
         }
         else
         {
-            DRD_LOG_WARNING("Failed to configure peer %s settings", client->hostname);
+            DRD_LOG_WARNING("Failed to configure peer %s settings", peer->hostname);
         }
         return FALSE;
     }
 
-    client->PostConnect = drd_peer_post_connect;
-    client->Activate = drd_peer_activate;
-    client->Disconnect = drd_peer_disconnected;
-    client->Capabilities = drd_peer_capabilities;
+    peer->PostConnect = drd_peer_post_connect;
+    peer->Activate = drd_peer_activate;
+    peer->Disconnect = drd_peer_disconnected;
+    peer->Capabilities = drd_peer_capabilities;
 
-    if (client->Initialize == NULL || !client->Initialize(client))
+    if (peer->Initialize == NULL || !peer->Initialize(peer))
     {
-        DRD_LOG_WARNING("Failed to initialize peer %s", client->hostname);
+        DRD_LOG_WARNING("Failed to initialize peer %s", peer->hostname);
         return FALSE;
     }
 
-    DrdRdpPeerContext *ctx = (DrdRdpPeerContext *)client->context;
+    DrdRdpPeerContext *ctx = (DrdRdpPeerContext *)peer->context;
     if (ctx == NULL || ctx->session == NULL)
     {
-        DRD_LOG_WARNING("Peer %s context did not expose a session", client->hostname);
+        DRD_LOG_WARNING("Peer %s context did not expose a session", peer->hostname);
         return FALSE;
     }
-
-    ctx->vcm = WTSOpenServerA((LPSTR)client->context);
+    // RDPEGFX Graphics Pipeline的关键，虚拟通道
+    ctx->vcm = WTSOpenServerA((LPSTR)peer->context);
     if (ctx->vcm == NULL || ctx->vcm == INVALID_HANDLE_VALUE)
     {
-        DRD_LOG_WARNING("Peer %s failed to create virtual channel manager", client->hostname);
+        DRD_LOG_WARNING("Peer %s failed to create virtual channel manager", peer->hostname);
         return FALSE;
     }
-    // WTSVirtualChannelManagerSetDVCCreationCallback (ctx->vcm, dvc_creation_status,
-    //                                               client->context);
 
     drd_rdp_session_set_virtual_channel_manager(ctx->session, ctx->vcm);
 
@@ -598,7 +596,7 @@ drd_listener_peer_accepted(freerdp_listener *listener, freerdp_peer *client)
 
     if (!drd_rdp_session_start_event_thread(ctx->session))
     {
-        DRD_LOG_WARNING("Failed to start event thread for peer %s", client->hostname);
+        DRD_LOG_WARNING("Failed to start event thread for peer %s", peer->hostname);
         return FALSE;
     }
 
@@ -609,17 +607,17 @@ drd_listener_peer_accepted(freerdp_listener *listener, freerdp_peer *client)
                                         drd_rdp_listener_on_session_closed,
                                         self);
 
-    if (client->context != NULL && client->context->input != NULL)
+    if (peer->context != NULL && peer->context->input != NULL)
     {
-        rdpInput *input = client->context->input;
-        input->context = client->context;
+        rdpInput *input = peer->context->input;
+        input->context = peer->context;
         input->KeyboardEvent = drd_rdp_peer_keyboard_event;
         input->UnicodeKeyboardEvent = drd_rdp_peer_unicode_event;
         input->MouseEvent = drd_rdp_peer_pointer_event;
         input->ExtendedMouseEvent = drd_rdp_peer_pointer_event;
     }
 
-    DRD_LOG_MESSAGE("Accepted connection from %s", client->hostname);
+    DRD_LOG_MESSAGE("Accepted connection from %s", peer->hostname);
     return TRUE;
 }
 // listener 事件循环

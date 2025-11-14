@@ -7,6 +7,8 @@
 #include <gio/gio.h>
 #include <string.h>
 
+#include "utils/drd_log.h"
+
 struct _DrdRfxEncoder
 {
     GObject parent_instance;
@@ -26,6 +28,28 @@ struct _DrdRfxEncoder
 
 G_DEFINE_TYPE(DrdRfxEncoder, drd_rfx_encoder, G_TYPE_OBJECT)
 
+static inline guint64
+drd_rotl64(guint64 value, guint shift)
+{
+    return (value << shift) | (value >> (64 - shift));
+}
+
+static inline guint64
+drd_mix_chunk(guint64 hash, guint64 chunk)
+{
+    chunk ^= chunk >> 30;
+    chunk *= G_GUINT64_CONSTANT(0xbf58476d1ce4e5b9);
+    chunk ^= chunk >> 27;
+    chunk *= G_GUINT64_CONSTANT(0x94d049bb133111eb);
+    chunk ^= chunk >> 31;
+
+    hash ^= chunk;
+    hash = drd_rotl64(hash, 29);
+    hash *= G_GUINT64_CONSTANT(0x9e3779b185ebca87);
+    return hash;
+}
+
+/* 对每个 tile 采用 16/8 字节块混合，避免逐字节 FNV 乘法带来的 CPU 压力。 */
 static guint64
 hash_tile(const guint8 *data,
           guint stride,
@@ -34,17 +58,40 @@ hash_tile(const guint8 *data,
           guint32 width,
           guint32 height)
 {
-    const guint64 fnv_offset = 1469598103934665603ULL;
-    const guint64 fnv_prime = 1099511628211ULL;
-    guint64 hash = fnv_offset;
+    guint64 hash = G_GUINT64_CONSTANT(0xcbf29ce484222325);
+    const guint32 bytes_per_row = width * 4u;
 
     for (guint row = 0; row < height; ++row)
     {
         const guint8 *ptr = data + ((gsize)(y + row) * stride) + (gsize)x * 4;
-        for (guint col = 0; col < width * 4; ++col)
+        guint32 remaining = bytes_per_row;
+
+        while (remaining >= 16)
         {
-            hash ^= ptr[col];
-            hash *= fnv_prime;
+            guint64 lo, hi;
+            memcpy(&lo, ptr, sizeof(lo));
+            memcpy(&hi, ptr + 8, sizeof(hi));
+            hash = drd_mix_chunk(hash, lo);
+            hash = drd_mix_chunk(hash, hi);
+            ptr += 16;
+            remaining -= 16;
+        }
+
+        while (remaining >= 8)
+        {
+            guint64 chunk;
+            memcpy(&chunk, ptr, sizeof(chunk));
+            hash = drd_mix_chunk(hash, chunk);
+            ptr += 8;
+            remaining -= 8;
+        }
+
+        if (remaining > 0)
+        {
+            guint64 tail = 0;
+            memcpy(&tail, ptr, remaining);
+            tail ^= ((guint64)remaining << 56);
+            hash = drd_mix_chunk(hash, tail);
         }
     }
 
@@ -557,6 +604,7 @@ drd_rfx_encoder_encode(DrdRfxEncoder *self,
 
     if (keyframe_encode)
     {
+        DRD_LOG_MESSAGE("key frame encode");
         for (guint idx = 0; idx < self->tile_hashes->len; ++idx)
         {
             g_array_index(self->tile_hashes, guint64, idx) = 0;
