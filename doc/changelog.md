@@ -32,6 +32,15 @@
   - `doc/changelog.md`：记录上述文档更新，明确 Progressive RFX 的默认 RLGR1、关键帧守卫及调试方法。
 - **影响**：开发者查阅文档即可了解当前实现的关键约束（ACK 背压、关键帧要求、renderer 生命周期），无需再回溯旧的 GNOME upstream 描述即可调试 `glib-rewrite`。
 
+### 会话重连修复
+- **目的**：解决客户端首次断开后监听器仍认为存在活动会话、拒绝后续连接的问题，避免日志报错 `session already active`。
+- **范围**：
+  - `glib-rewrite/src/transport/drd_rdp_listener.c`：`DrdRdpPeerContext` 持有监听器引用，`drd_peer_disconnected()` 与 `drd_peer_context_free()` 都会调用新的 `drd_rdp_listener_session_closed()`，在断线及异常析构时清理 `sessions` 数组并输出剩余会话数。
+  - `glib-rewrite/src/session/drd_rdp_session.{c,h}`：新增 `drd_rdp_session_set_closed_callback()`，在 VCM 线程退出或停止事件线程后触发一次性回调，让监听器即时移除僵尸会话，即便 FreeRDP 没有触发 `Disconnect` 也能恢复可连接状态。
+  - `.codex/plan/rdp-reconnect.md`：建立并更新排查计划，记录根因、修复与验证过程，便于后续追溯。
+  - `doc/architecture.md`：新增 “会话生命周期与重连” 小节及状态图，描述监听器如何串联 FreeRDP 回调来维护单会话限制。
+- **影响**：FreeRDP 回调会在任何断线路径上释放 `g_ptr_array` 中的会话引用，监听器能立即接受新客户端，避免 BIO 重试耗尽及 `PeerAccepted` 失败；同时文档对调度逻辑有清晰记录，方便后续维护。
+
 ## 2025-11-12
 - **目的**：整理 Rdpgfx Progressive 拥塞/花屏调查计划，明确分析上下文。
 - **范围**：新增 `.codex/plan/rdpgfx-progressive-congestion-analysis.md`，记录任务背景与分步计划，后续用以比对 `gnome-remote-desktop` 与 `glib-rewrite` 的图形管线差异。

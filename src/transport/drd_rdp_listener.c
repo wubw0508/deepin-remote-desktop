@@ -25,12 +25,16 @@ typedef struct
     DrdServerRuntime *runtime;
     DrdNlaSamFile *nla_sam;
     HANDLE vcm;
+    DrdRdpListener *listener;
 } DrdRdpPeerContext;
 
 static BOOL drd_rdp_peer_keyboard_event(rdpInput *input, UINT16 flags, UINT8 code);
 static BOOL drd_rdp_peer_unicode_event(rdpInput *input, UINT16 flags, UINT16 code);
 static BOOL drd_rdp_peer_pointer_event(rdpInput *input, UINT16 flags, UINT16 x, UINT16 y);
 static BOOL drd_peer_capabilities(freerdp_peer *client);
+static gboolean drd_rdp_listener_has_active_session(DrdRdpListener *self);
+static gboolean drd_rdp_listener_session_closed(DrdRdpListener *self, DrdRdpSession *session);
+static void drd_rdp_listener_on_session_closed(DrdRdpSession *session, gpointer user_data);
 
 struct _DrdRdpListener
 {
@@ -125,6 +129,48 @@ drd_rdp_listener_init(DrdRdpListener *self)
     self->sessions = g_ptr_array_new_with_free_func(g_object_unref);
 }
 
+static gboolean
+drd_rdp_listener_has_active_session(DrdRdpListener *self)
+{
+    if (self == NULL || self->sessions == NULL)
+    {
+        return FALSE;
+    }
+
+    return self->sessions->len > 0;
+}
+
+static gboolean
+drd_rdp_listener_session_closed(DrdRdpListener *self, DrdRdpSession *session)
+{
+    if (self == NULL || self->sessions == NULL || session == NULL)
+    {
+        return FALSE;
+    }
+
+    if (!g_ptr_array_remove_fast(self->sessions, session))
+    {
+        return FALSE;
+    }
+
+    DRD_LOG_MESSAGE("Detached session %p, %u session(s) remaining",
+                    (void *)session,
+                    self->sessions->len);
+    return TRUE;
+}
+
+static void
+drd_rdp_listener_on_session_closed(DrdRdpSession *session, gpointer user_data)
+{
+    DrdRdpListener *self = DRD_RDP_LISTENER(user_data);
+    if (self == NULL)
+    {
+        return;
+    }
+
+    drd_rdp_listener_session_closed(self, session);
+}
+
 DrdRdpListener *
 drd_rdp_listener_new(const gchar *bind_address,
                       guint16 port,
@@ -161,6 +207,7 @@ drd_peer_context_new(freerdp_peer *client, rdpContext *context)
     ctx->runtime = NULL;
     ctx->nla_sam = NULL;
     ctx->vcm = INVALID_HANDLE_VALUE;
+    ctx->listener = NULL;
     return ctx->session != NULL;
 }
 
@@ -170,6 +217,10 @@ drd_peer_context_free(freerdp_peer *client G_GNUC_UNUSED, rdpContext *context)
     DrdRdpPeerContext *ctx = (DrdRdpPeerContext *)context;
     if (ctx->session != NULL)
     {
+        if (ctx->listener != NULL)
+        {
+            drd_rdp_listener_session_closed(ctx->listener, ctx->session);
+        }
         g_object_unref(ctx->session);
         ctx->session = NULL;
     }
@@ -186,6 +237,7 @@ drd_peer_context_free(freerdp_peer *client G_GNUC_UNUSED, rdpContext *context)
         WTSCloseServer(ctx->vcm);
         ctx->vcm = INVALID_HANDLE_VALUE;
     }
+    ctx->listener = NULL;
 }
 
 static BOOL
@@ -219,6 +271,10 @@ drd_peer_disconnected(freerdp_peer *client)
     if (ctx != NULL && ctx->session != NULL)
     {
         drd_rdp_session_set_peer_state(ctx->session, "disconnected");
+        if (ctx->listener != NULL)
+        {
+            drd_rdp_listener_session_closed(ctx->listener, ctx->session);
+        }
     }
 }
 
@@ -488,7 +544,7 @@ drd_listener_peer_accepted(freerdp_listener *listener, freerdp_peer *client)
         return FALSE;
     }
 
-    if (self->sessions->len > 0)
+    if (drd_rdp_listener_has_active_session(self))
     {
         DRD_LOG_WARNING("Rejecting connection from %s: session already active", client->hostname);
         return FALSE;
@@ -546,8 +602,12 @@ drd_listener_peer_accepted(freerdp_listener *listener, freerdp_peer *client)
         return FALSE;
     }
 
+    ctx->listener = self;
     drd_rdp_session_set_peer_state(ctx->session, "initialized");
     g_ptr_array_add(self->sessions, g_object_ref(ctx->session));
+    drd_rdp_session_set_closed_callback(ctx->session,
+                                        drd_rdp_listener_on_session_closed,
+                                        self);
 
     if (client->context != NULL && client->context->input != NULL)
     {

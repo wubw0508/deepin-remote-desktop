@@ -170,6 +170,21 @@ sequenceDiagram
     Pipeline-->>Renderer: capacity_cond signal（允许下一帧）
 ```
 
+## 会话生命周期与重连（2025-11-14）
+- `DrdRdpPeerContext` 现在持有 `DrdRdpListener *listener`，当 FreeRDP 触发 `Disconnect` 或上下文析构时能够回调监听器，保持单一职责：会话对象仍聚焦图像/输入流，而连接资源释放由监听器集中处理。
+- `drd_rdp_listener_session_closed()` 负责从 `sessions` 数组中移除断线的 `DrdRdpSession`，只有当真正找到了匹配项才输出日志并减少引用计数，避免重复移除造成的未定义行为。
+- `drd_peer_disconnected()` 与 `drd_peer_context_free()` 都会调用该方法，从而覆盖正常断线与握手失败两条路径，确保 `sessions->len` 回落到 0，新的客户端即可重新接入，不再出现 “session already active”。
+- `DrdRdpSession` 在 VCM 线程退出或 `drd_rdp_session_stop_event_thread()` 完成时会触发一次性关闭回调，由监听器在主线程内同步移除 `sessions` 元素，即使 FreeRDP 未调用 `client->Disconnect` 也不会遗留僵尸会话。
+- 由于监听器自己的生命周期仍由 `DrdApplication` 管控，不需要在移除会话时立即 `stop()` runtime，避免下一次连接时缺少捕获/编码链路。
+
+```mermaid
+stateDiagram-v2
+    [*] --> Idle: Listener started
+    Idle --> Active: PeerAccepted\n(g_ptr_array_add)
+    Active --> Closing: FreeRDP Disconnect\n或 ContextFree
+    Closing --> Idle: drd_rdp_listener_session_closed\n(g_ptr_array_remove_fast)
+```
+
 ## 待优化方向
 - **Rdpgfx 失联超时**：目前 `drd_rdp_session_try_submit_graphics()` 传入 `-1` 调用 `drd_rdp_graphics_pipeline_wait_for_capacity()`，若客户端停止发送 ACK，renderer 线程会无限阻塞，只有连接关闭或手动禁用 Rdpgfx 才能恢复。需要增加超时/心跳和自动降级逻辑，避免服务端被拖死。
 - **Unicode 注入缺失**：`drd_x11_input_inject_unicode()` 仍是空实现（直接返回 TRUE），Remmina/Windows 发送的 `Unicode` 事件被丢弃。应补全 UTF-16 → X11 Keysym 映射并复用 `XTestFakeKeyEvent`，否则国际化文本只能依赖组合键。

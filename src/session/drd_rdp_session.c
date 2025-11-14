@@ -36,6 +36,9 @@ struct _DrdRdpSession
     gint connection_alive;
     GThread *render_thread;
     gint render_running;
+    DrdRdpSessionClosedFunc closed_cb;
+    gpointer closed_cb_data;
+    gint closed_cb_invoked;
 };
 
 G_DEFINE_TYPE(DrdRdpSession, drd_rdp_session, G_TYPE_OBJECT)
@@ -57,6 +60,7 @@ static gboolean drd_rdp_session_wait_for_graphics_capacity(DrdRdpSession *self,
 static gboolean drd_rdp_session_start_render_thread(DrdRdpSession *self);
 static void drd_rdp_session_stop_render_thread(DrdRdpSession *self);
 static gpointer drd_rdp_session_render_thread(gpointer user_data);
+static void drd_rdp_session_notify_closed(DrdRdpSession *self);
 
 static void
 drd_rdp_session_dispose(GObject *object)
@@ -119,6 +123,9 @@ drd_rdp_session_init(DrdRdpSession *self)
     g_atomic_int_set(&self->connection_alive, 1);
     self->render_thread = NULL;
     g_atomic_int_set(&self->render_running, 0);
+    self->closed_cb = NULL;
+    self->closed_cb_data = NULL;
+    g_atomic_int_set(&self->closed_cb_invoked, 0);
 }
 
 DrdRdpSession *
@@ -172,6 +179,28 @@ drd_rdp_session_set_virtual_channel_manager(DrdRdpSession *self, HANDLE vcm)
     g_return_if_fail(DRD_IS_RDP_SESSION(self));
     self->vcm = vcm;
     drd_rdp_session_maybe_init_graphics(self);
+}
+
+void
+drd_rdp_session_set_closed_callback(DrdRdpSession *self,
+                                     DrdRdpSessionClosedFunc callback,
+                                     gpointer user_data)
+{
+    g_return_if_fail(DRD_IS_RDP_SESSION(self));
+
+    self->closed_cb = callback;
+    self->closed_cb_data = user_data;
+
+    if (callback == NULL)
+    {
+        g_atomic_int_set(&self->closed_cb_invoked, 0);
+        return;
+    }
+
+    if (g_atomic_int_get(&self->connection_alive) == 0)
+    {
+        drd_rdp_session_notify_closed(self);
+    }
 }
 
 BOOL
@@ -319,102 +348,26 @@ drd_rdp_session_stop_event_thread(DrdRdpSession *self)
         g_thread_join(self->vcm_thread);
         self->vcm_thread = NULL;
     }
+
+    drd_rdp_session_notify_closed(self);
 }
 
-BOOL
-drd_rdp_session_pump(DrdRdpSession *self)
+static void
+drd_rdp_session_notify_closed(DrdRdpSession *self)
 {
-    g_return_val_if_fail(DRD_IS_RDP_SESSION(self), FALSE);
-    if (self->peer == NULL)
+    g_return_if_fail(DRD_IS_RDP_SESSION(self));
+
+    if (self->closed_cb == NULL)
     {
-        return FALSE;
+        return;
     }
 
-    if (!g_atomic_int_get(&self->connection_alive))
+    if (!g_atomic_int_compare_and_exchange(&self->closed_cb_invoked, 0, 1))
     {
-        DRD_LOG_MESSAGE("Session %s connection closed", self->peer_address);
-        return FALSE;
+        return;
     }
 
-    if (self->render_thread != NULL)
-    {
-        return TRUE;
-    }
-
-    if (self->runtime == NULL)
-    {
-        return TRUE;
-    }
-
-    if (!self->is_activated)
-    {
-        return TRUE;
-    }
-
-    UINT32 negotiated_max_payload = 0;
-    if (self->peer->context != NULL && self->peer->context->settings != NULL)
-    {
-        negotiated_max_payload = freerdp_settings_get_uint32(self->peer->context->settings,
-                                                             FreeRDP_MultifragMaxRequestSize);
-    }
-
-    if (self->graphics_pipeline != NULL && self->graphics_pipeline_ready)
-    {
-        if (!drd_rdp_session_wait_for_graphics_capacity(self, -1))
-        {
-            drd_rdp_session_disable_graphics_pipeline(self,
-                                                      "Rdpgfx capacity wait aborted");
-        }
-    }
-
-    DrdEncodedFrame *encoded = NULL;
-    g_autoptr(GError) error = NULL;
-    if (!drd_server_runtime_pull_encoded_frame(self->runtime,
-                                                16 * 1000, /* 16ms */
-                                                &encoded,
-                                                &error))
-    {
-        if (error != NULL && error->domain == G_IO_ERROR && error->code == G_IO_ERROR_TIMED_OUT)
-        {
-            g_clear_error(&error);
-            return TRUE;
-        }
-
-        if (error != NULL)
-        {
-            DRD_LOG_WARNING("Session %s failed to pull encoded frame: %s", self->peer_address, error->message);
-        }
-        return TRUE;
-    }
-
-    g_autoptr(DrdEncodedFrame) owned_frame = encoded;
-
-    gboolean sent_via_graphics = drd_rdp_session_try_submit_graphics(self, owned_frame);
-    if (!sent_via_graphics)
-    {
-        g_autoptr(GError) send_error = NULL;
-        if (!drd_rdp_session_send_surface_bits(self,
-                                                owned_frame,
-                                                self->frame_sequence,
-                                                negotiated_max_payload,
-                                                &send_error))
-        {
-            if (send_error != NULL)
-            {
-                DRD_LOG_WARNING("Session %s failed to send frame: %s",
-                                self->peer_address,
-                                send_error->message);
-            }
-        }
-    }
-
-    self->frame_sequence++;
-    if (self->frame_sequence == 0)
-    {
-        self->frame_sequence = 1;
-    }
-
-    return TRUE;
+    self->closed_cb(self, self->closed_cb_data);
 }
 
 void
@@ -542,6 +495,7 @@ drd_rdp_session_vcm_thread(gpointer user_data)
     }
 
     g_atomic_int_set(&self->render_running, 0);
+    drd_rdp_session_notify_closed(self);
     g_object_unref(self);
     return NULL;
 }
@@ -711,7 +665,7 @@ drd_rdp_session_render_thread(gpointer user_data)
                     freerdp_settings_get_uint32(self->peer->context->settings,
                                                 FreeRDP_MultifragMaxRequestSize);
             }
-
+            DRD_LOG_MESSAGE("try to send surface bit");
             g_autoptr(GError) send_error = NULL;
             if (!drd_rdp_session_send_surface_bits(self,
                                                     owned_frame,

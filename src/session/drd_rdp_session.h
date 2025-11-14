@@ -15,10 +15,15 @@ G_BEGIN_DECLS
 #define DRD_TYPE_RDP_SESSION (drd_rdp_session_get_type())
 G_DECLARE_FINAL_TYPE(DrdRdpSession, drd_rdp_session, DRD, RDP_SESSION, GObject)
 
+typedef void (*DrdRdpSessionClosedFunc)(DrdRdpSession *session, gpointer user_data);
+
 DrdRdpSession *drd_rdp_session_new(freerdp_peer *peer);
 void drd_rdp_session_set_peer_state(DrdRdpSession *self, const gchar *state);
 void drd_rdp_session_set_runtime(DrdRdpSession *self, DrdServerRuntime *runtime);
 void drd_rdp_session_set_virtual_channel_manager(DrdRdpSession *self, HANDLE vcm);
+void drd_rdp_session_set_closed_callback(DrdRdpSession *self,
+                                         DrdRdpSessionClosedFunc callback,
+                                         gpointer user_data);
 BOOL drd_rdp_session_post_connect(DrdRdpSession *self);
 BOOL drd_rdp_session_activate(DrdRdpSession *self);
 BOOL drd_rdp_session_pump(DrdRdpSession *self);
