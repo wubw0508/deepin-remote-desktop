@@ -10,6 +10,21 @@
   - `doc/architecture.md`：记录关键帧守卫、RLGR1 Progressive、FrameAcknowledge 背压以及 renderer/捕获线程协作流程，便于团队理解与排查。
 - **影响**：首次或重置后的 Progressive 帧一定是带 Header 的关键帧，即使编码线程存在竞态也会被拦截，客户端不再出现灰屏；遇到竞态时仅触发一次重新编码，不会强制回退 SurfaceBits。
 
+### Contributor Guide（AGENTS.md）
+- **目的**：为贡献者提供集中化的开发手册，涵盖目录结构、构建/测试命令、编码规范及提交流程，缩短上手时间。
+- **范围**：
+  - 新增 `AGENTS.md`，以 “Repository Guidelines” 形式记录模块划分、Meson 命令、命名约定、测试策略以及安全注意事项。
+  - 在 `.codex/plan/contributor-guide.md` 建立并更新任务计划，跟踪调研、撰写与文档同步节点。
+- **影响**：仓库现在具备 200-400 词的英文 Contributor Guide，可直接引用于 code review/PR 模板，并确保后续任务能够通过 `.codex/plan` 跟踪状态。
+
+### 架构文档校验
+- **目的**：将 `doc/architecture.md` 与当前 C/GLib 实现对齐，移除已废弃的 “编码线程/GAsyncQueue/DrdRdpRenderer” 描述，并突出同步编码与 renderer 线程的真实职责。
+- **范围**：
+  - 更新模块分层、数据流、FrameAcknowledge 章节，描述 `drd_server_runtime_pull_encoded_frame()` 的同步编码流程、`drd_rdp_session_render_thread()` 的发送策略及 `max_outstanding_frames` 背压机制。
+  - 修正 Rdpgfx 背压图示与文字，删除对 `DrdRdpRenderer` 文件、`doc/rdpgfx-pipeline.md` 的引用，并说明当前 ACK 仅递减 `outstanding_frames`。
+  - 新增 “待优化方向” 小节，列出 ACK 无限等待、Unicode 注入缺失以及多显示器拓扑空白等待办事项。
+- **影响**：架构文档与源码状态一致，开发者可依文档理解渲染线程/背压行为，并明确下一步应改进的薄弱点。
+
 ## 2025-11-14
 - **目的**：补充最新的 RDPGFX 流水线文档，确保 `doc/architecture.md`/`doc/changelog.md` 能准确描述 RLGR1 Progressive、renderer 单线程、FrameAcknowledge 背压以及 capture → encode → send 的协作关系。
 - **范围**：
