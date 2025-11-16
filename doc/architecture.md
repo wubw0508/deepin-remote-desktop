@@ -1,9 +1,16 @@
 # Deepin Remote Desktop (drd) 架构概览
 
-## 总体目标
-- 以 C(GLib/GObject) 为核心，重构原 C++ RDP 服务端，保证单一职责、易扩展。
-- 构建模块化层次：应用入口 → 运行时 → 采集/编码/输入 → 传输(RDP) → 对外接口。
-- 在重构过程中逐步替换旧逻辑，避免新旧代码交叉依赖。
+## 愿景与范围
+- 定位为 Linux 上的现代 RDP 服务端，覆盖远程显示/输入、多媒体、虚拟通道、安全接入与服务化运维。
+- 以 C(GLib/GObject) + FreeRDP 为主干，保持单一职责、可替换、易调试；按能力分阶段落地，确保每个增量可独立验证。
+- 模块化运行时：应用入口 → 配置/安全 → 采集 & 编码 → RDP 传输 → 虚拟通道/设备 → 服务治理（监控、策略、自动化恢复）。
+
+## 当前能力概览
+- **显示/编码**：X11/XDamage 抓屏 + 单帧队列，RFX Progressive（默认 RLGR1）与 Raw 回退，关键帧/上下文管理齐备。
+- **传输**：FreeRDP 监听 + TLS/NLA 强制，渲染线程串行“等待帧→编码→Rdpgfx/SurfaceBits 发送”，具备 ACK 背压与自动回退逻辑。
+- **输入**：XTest 键鼠注入，扩展扫描码拆分，支持指针缩放；Unicode 注入仍未实现。
+- **配置/安全**：INI/CLI 合并，TLS 凭据集中加载，NLA SAM 临时文件确保 CredSSP，拒绝回退纯 TLS/RDP。
+- **可观测性**：关键路径日志保持英语，文档/计划与源码同步更新，便于跟踪 renderer、Rdpgfx、会话生命周期。
 
 ## 模块分层
 
@@ -38,10 +45,39 @@
 - `utils/drd_frame_queue`：线程安全的单帧阻塞队列。
 - `utils/drd_encoded_frame`：编码后帧的统一表示，携带 payload 与元数据。
 
+### 7. 虚拟通道与多媒体（规划）
+- `channel/rdpdr` 系列：文件重定向、打印机、智能卡等；当前仅保留接口规划，未接入实现。
+- `channel/rdpsnd`：音频下行与麦克风回传，预计基于 PulseAudio/PipeWire 适配，后续补充同步策略。
+- `channel/clipboard/ime`：剪贴板、Unicode/IME、输入法透传，需结合现有输入层与 GLib 主循环统一调度。
+
+### 8. 服务化与治理（规划）
+- systemd/DBus 入口：为桌面环境或守护进程模式提供 handover，确保会话断线后自动恢复监听。
+- 观测与策略：指标/trace/日志打点、PAM/LDAP 集成、会话配额与带宽策略；当前仅有基础日志，需逐步补齐。
+
 ## 数据流简述
 1. 应用启动后创建 `DrdServerRuntime`，合并配置与 TLS 凭据，并在 `prepare_stream()` 中依次启动 capture/input/encoder。
 2. `DrdCaptureManager` 启动 `DrdX11Capture`，将最新 `DrdFrame` 写入只保留一帧的 `DrdFrameQueue`；不存在额外编码线程或队列，capture 线程只负责刷新画面。
 3. 会话激活后，`drd_rdp_session_render_thread()` 通过 `drd_server_runtime_pull_encoded_frame()` 同步等待帧并即时编码：若 Graphics Pipeline 就绪则走 Progressive（成功后将 runtime transport 设为 `DRD_FRAME_TRANSPORT_GRAPHICS_PIPELINE`），否则通过 `SurfaceBits` + `SurfaceFrameMarker` 推送，Raw 帧按行拆分以满足多片段上限。`drd_rdp_session_pump()` 仅在 renderer 尚未启动时退化为 SurfaceBits 发送。
+
+## 现代 RDP 功能蓝图
+- **显示链路**：现状为 X11 抓屏 + RFX/Raw；规划 H.264/AVC444、硬件加速、频道自适应（RFX↔H.264）与多显示器/DisplayControl。
+- **输入与协作**：现状具备键鼠；规划 Unicode/IME、Clipboard VCHANNEL、触控/笔、快捷键修复。
+- **多媒体与设备**：待补充 rdpsnd（音频播放/录制）与 rdpdr（文件、打印机、智能卡、USB 转发）。
+- **网络与治理**：需引入带宽/丢包探测、自适应码率、故障恢复、systemd handover 与健康探针。
+- **安全**：保持 TLS + NLA 默认开启，后续接入密钥托管、凭据轮换、多因子/外部认证接口。
+
+```mermaid
+flowchart LR
+    Client
+    Client --> LSN[Transport\nTLS+NLA]
+    LSN --> S[Session Manager\nRenderer/Backpressure]
+    S --> Display[Display Pipeline\nX11 Capture + RFX （ready）\nH.264/HW accel （TODO）]
+    S --> Input[Input Injection\nKeyboard/Pointer ready\nUnicode/IME （TODO）]
+    S --> Audio[Audio rdpsnd\nPlayback/Mic （TODO）]
+    S --> Clipboard[Clipboard/IME\nVCHANNEL （TODO）]
+    S --> Device[Device Redirect\nDrive/Printer/SmartCard （TODO）]
+    S --> Ops[Policy/Observability\nLogging ready\nMetrics/Health （TODO）]
+```
 
 ## 安全链路（TLS + NLA）
 - `config/default.ini` 及 CLI 新增 `[auth]`/`--nla-{username,password}`，服务进程启动时必须提供 NLA 凭据，才能生成 SAM 文件。
@@ -128,10 +164,10 @@ sequenceDiagram
 ```mermaid
 flowchart LR
   subgraph Capture Thread
-    X11[XDamage\nXShmGetImage] --> Q[DrdFrameQueue\n(仅缓存最新帧)]
+    X11[XDamage\nXShmGetImage] --> Q[DrdFrameQueue\n（仅缓存最新帧）]
   end
   subgraph Renderer Thread
-    Q --> |wait_frame| ENCODE[DrdEncodingManager\n(RLGR1 Progressive)]
+    Q --> |wait_frame| ENCODE[DrdEncodingManager\n（RLGR1 Progressive）]
     ENCODE --> |needs_keyframe?| PIPE[DrdRdpGraphicsPipeline\nSurfaceFrameCommand]
     PIPE --> |FrameAck| COND[capacity_cond broadcast]
     ENCODE --> |fallback| SURF[SurfaceBits]
@@ -185,11 +221,18 @@ stateDiagram-v2
     Closing --> Idle: drd_rdp_listener_session_closed\n(g_ptr_array_remove_fast)
 ```
 
-## 待优化方向
-- **Rdpgfx 失联超时**：目前 `drd_rdp_session_try_submit_graphics()` 传入 `-1` 调用 `drd_rdp_graphics_pipeline_wait_for_capacity()`，若客户端停止发送 ACK，renderer 线程会无限阻塞，只有连接关闭或手动禁用 Rdpgfx 才能恢复。需要增加超时/心跳和自动降级逻辑，避免服务端被拖死。
-- **Unicode 注入缺失**：`drd_x11_input_inject_unicode()` 仍是空实现（直接返回 TRUE），Remmina/Windows 发送的 `Unicode` 事件被丢弃。应补全 UTF-16 → X11 Keysym 映射并复用 `XTestFakeKeyEvent`，否则国际化文本只能依赖组合键。
-- **多显示器拓扑**：`drd_rdp_graphics_pipeline_reset_locked()` 目前发送 `monitorCount=0`，客户端始终认为只有单显示器，无法感知真实布局。需要把 Xinerama/Monitor 信息注入 `ResetGraphics`/`MapSurfaceToOutput`，并在 DisplayControl 关闭的前提下仍提供正确的输出坐标。
-***
+## 短期待优化（已落地功能）
+- **Rdpgfx 失联超时**：`drd_rdp_session_try_submit_graphics()` 仍以无限等待 ACK 为主，需要补充分级超时/自动降级策略，避免 renderer 阻塞。
+- **输入兼容性**：`drd_x11_input_inject_unicode()` 空置，Alt/组合键在部分客户端不可用；需补齐 UTF-16 → Keysym 映射与快捷键测试。
+- **多显示器/分辨率**：`drd_rdp_graphics_pipeline_reset_locked()` 发送 `monitorCount=0`，缺失拓扑信息；需要在 DisplayControl 关闭时仍回传物理显示布局。
+
+## 能力缺口（现代 RDP 必备）
+- **多媒体**：rdpsnd 音频播放/录制尚未集成；后续需与编码帧同步、处理采样率与缓冲策略。
+- **协作通道**：剪贴板、IME/Unicode 输入、触控/笔事件缺失，影响日常办公体验。
+- **视频编码**：H.264/AVC444 与硬件加速未落地，带宽自适应与 QoS 机制尚未实现。
+- **虚拟设备**：文件/打印机/智能卡/USB 重定向均为空白，需要依次接入 rdpdr 子通道。
+- **服务化**：systemd/DBus handover、健康探针、Session 并发与策略控制尚未完成。
+- **平台适配**：Wayland 捕获与输入、加密密钥安全存储（如内核密钥环/硬件密钥）仍需规划。
 
 ## 遗留问题
 1. alt 快捷键不能用；
