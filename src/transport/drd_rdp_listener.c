@@ -2,6 +2,8 @@
 
 #include <gio/gio.h>
 #include <string.h>
+#include <errno.h>
+#include <unistd.h>
 #include <freerdp/freerdp.h>
 #include <freerdp/listener.h>
 #include <freerdp/settings.h>
@@ -37,15 +39,16 @@ static gboolean drd_rdp_listener_has_active_session(DrdRdpListener *self);
 static gboolean drd_rdp_listener_session_closed(DrdRdpListener *self, DrdRdpSession *session);
 static void drd_rdp_listener_on_session_closed(DrdRdpSession *session, gpointer user_data);
 static gboolean drd_rdp_listener_authenticate_tls_login(DrdRdpPeerContext *ctx, freerdp_peer *client);
+static gboolean drd_rdp_listener_incoming(GSocketService *service,
+                                          GSocketConnection *connection,
+                                          GObject *source_object);
 
 struct _DrdRdpListener
 {
-    GObject parent_instance;
+    GSocketService parent_instance;
 
     gchar *bind_address;
     guint16 port;
-    freerdp_listener *listener;
-    guint tick_id;
     GPtrArray *sessions;
     DrdServerRuntime *runtime;
     gchar *nla_username;
@@ -55,9 +58,11 @@ struct _DrdRdpListener
     gchar *pam_service;
     gboolean system_mode;
     DrdEncodingOptions encoding_options;
+    gboolean is_bound;
+    GCancellable *cancellable;
 };
 
-G_DEFINE_TYPE(DrdRdpListener, drd_rdp_listener, G_TYPE_OBJECT)
+G_DEFINE_TYPE(DrdRdpListener, drd_rdp_listener, G_TYPE_SOCKET_SERVICE)
 
 static void drd_rdp_listener_stop_internal(DrdRdpListener *self);
 
@@ -133,12 +138,17 @@ drd_rdp_listener_class_init(DrdRdpListenerClass *klass)
     GObjectClass *object_class = G_OBJECT_CLASS(klass);
     object_class->dispose = drd_rdp_listener_dispose;
     object_class->finalize = drd_rdp_listener_finalize;
+
+    GSocketServiceClass *service_class = G_SOCKET_SERVICE_CLASS(klass);
+    service_class->incoming = drd_rdp_listener_incoming;
 }
 
 static void
 drd_rdp_listener_init(DrdRdpListener *self)
 {
     self->sessions = g_ptr_array_new_with_free_func(g_object_unref);
+    self->is_bound = FALSE;
+    self->cancellable = NULL;
 }
 
 static gboolean
@@ -228,6 +238,88 @@ drd_rdp_listener_get_runtime(DrdRdpListener *self)
 {
     g_return_val_if_fail(DRD_IS_RDP_LISTENER(self), NULL);
     return self->runtime;
+}
+
+static gchar *
+drd_rdp_listener_describe_connection(GSocketConnection *connection)
+{
+    g_return_val_if_fail(G_IS_SOCKET_CONNECTION(connection), g_strdup("unknown"));
+
+    g_autoptr(GSocketAddress) address = g_socket_connection_get_remote_address(connection, NULL);
+    if (address == NULL)
+    {
+        return g_strdup("unknown");
+    }
+
+    if (!G_IS_INET_SOCKET_ADDRESS(address))
+    {
+        return g_strdup("unknown");
+    }
+
+    GInetAddress *inet_address = g_inet_socket_address_get_address(G_INET_SOCKET_ADDRESS(address));
+    if (inet_address == NULL)
+    {
+        return g_strdup("unknown");
+    }
+
+    g_autofree gchar *ip = g_inet_address_to_string(inet_address);
+    if (ip == NULL)
+    {
+        return g_strdup("unknown");
+    }
+
+    const guint16 port = g_inet_socket_address_get_port(G_INET_SOCKET_ADDRESS(address));
+    return g_strdup_printf("%s:%u", ip, port);
+}
+
+static freerdp_peer *
+drd_rdp_listener_peer_from_connection(GSocketConnection *connection, GError **error)
+{
+    g_return_val_if_fail(G_IS_SOCKET_CONNECTION(connection), NULL);
+
+    GSocket *socket = g_socket_connection_get_socket(connection);
+    if (socket == NULL)
+    {
+        g_set_error_literal(error,
+                            G_IO_ERROR,
+                            G_IO_ERROR_FAILED,
+                            "Connection did not expose a socket");
+        return NULL;
+    }
+
+    const int fd = g_socket_get_fd(socket);
+    if (fd < 0)
+    {
+        g_set_error_literal(error,
+                            G_IO_ERROR,
+                            G_IO_ERROR_FAILED,
+                            "Failed to retrieve socket file descriptor");
+        return NULL;
+    }
+
+    const int duplicated_fd = dup(fd);
+    if (duplicated_fd < 0)
+    {
+        g_set_error(error,
+                    G_IO_ERROR,
+                    g_io_error_from_errno(errno),
+                    "dup() failed: %s",
+                    g_strerror(errno));
+        return NULL;
+    }
+
+    freerdp_peer *peer = freerdp_peer_new(duplicated_fd);
+    if (peer == NULL)
+    {
+        close(duplicated_fd);
+        g_set_error_literal(error,
+                            G_IO_ERROR,
+                            G_IO_ERROR_FAILED,
+                            "freerdp_peer_new returned null");
+        return NULL;
+    }
+
+    return peer;
 }
 
 static BOOL
@@ -602,14 +694,13 @@ drd_configure_peer_settings(DrdRdpListener *self, freerdp_peer *client, GError *
     return TRUE;
 }
 
-static BOOL
-drd_listener_peer_accepted(freerdp_listener *listener, freerdp_peer *peer)
+static gboolean
+drd_rdp_listener_accept_peer(DrdRdpListener *self,
+                              freerdp_peer   *peer,
+                              const gchar    *peer_name)
 {
-    DrdRdpListener *self = (DrdRdpListener *)listener->param1;
-    if (self == NULL)
-    {
-        return FALSE;
-    }
+    g_return_val_if_fail(DRD_IS_RDP_LISTENER(self), FALSE);
+    g_return_val_if_fail(peer != NULL, FALSE);
 
     peer->ContextSize = sizeof(DrdRdpPeerContext);
     peer->ContextNew = drd_peer_context_new;
@@ -623,7 +714,8 @@ drd_listener_peer_accepted(freerdp_listener *listener, freerdp_peer *peer)
 
     if (drd_rdp_listener_has_active_session(self))
     {
-        DRD_LOG_WARNING("Rejecting connection from %s: session already active", peer->hostname);
+        DRD_LOG_WARNING("Rejecting connection from %s: session already active",
+                        peer_name != NULL ? peer_name : peer->hostname);
         return FALSE;
     }
 
@@ -632,7 +724,9 @@ drd_listener_peer_accepted(freerdp_listener *listener, freerdp_peer *peer)
     {
         if (settings_error != NULL)
         {
-            DRD_LOG_WARNING("Failed to configure peer %s settings: %s", peer->hostname, settings_error->message);
+            DRD_LOG_WARNING("Failed to configure peer %s settings: %s",
+                            peer->hostname,
+                            settings_error->message);
         }
         else
         {
@@ -659,7 +753,6 @@ drd_listener_peer_accepted(freerdp_listener *listener, freerdp_peer *peer)
         return FALSE;
     }
 
-    // RDPEGFX Graphics Pipeline的关键，虚拟通道
     ctx->vcm = WTSOpenServerA((LPSTR)peer->context);
     if (ctx->vcm == NULL || ctx->vcm == INVALID_HANDLE_VALUE)
     {
@@ -696,92 +789,128 @@ drd_listener_peer_accepted(freerdp_listener *listener, freerdp_peer *peer)
         input->ExtendedMouseEvent = drd_rdp_peer_pointer_event;
     }
 
-    DRD_LOG_MESSAGE("Accepted connection from %s", peer->hostname);
+    DRD_LOG_MESSAGE("Accepted connection from %s",
+                    peer_name != NULL ? peer_name : peer->hostname);
     return TRUE;
 }
-// listener 事件循环
 static gboolean
-drd_rdp_listener_iterate(gpointer user_data)
+drd_rdp_listener_handle_connection(DrdRdpListener *self,
+                                   GSocketConnection *connection,
+                                   GError **error)
 {
+    g_return_val_if_fail(DRD_IS_RDP_LISTENER(self), FALSE);
+    g_return_val_if_fail(G_IS_SOCKET_CONNECTION(connection), FALSE);
 
-    DrdRdpListener *self = user_data;
-    if (self->listener == NULL)
+    g_autofree gchar *peer_name = drd_rdp_listener_describe_connection(connection);
+    freerdp_peer *peer = drd_rdp_listener_peer_from_connection(connection, error);
+    if (peer == NULL)
     {
-        return G_SOURCE_REMOVE;
+        g_io_stream_close(G_IO_STREAM(connection), NULL, NULL);
+        g_object_unref(connection);
+        return FALSE;
     }
 
-    if (self->listener->CheckFileDescriptor != NULL)
+    g_io_stream_close(G_IO_STREAM(connection), NULL, NULL);
+    g_object_unref(connection);
+
+    if (!drd_rdp_listener_accept_peer(self, peer, peer_name))
     {
-        if (!self->listener->CheckFileDescriptor(self->listener))
-        {
-            DRD_LOG_WARNING("Listener CheckFileDescriptor failed");
-        }
+        freerdp_peer_free(peer);
+        return FALSE;
     }
-    return G_SOURCE_CONTINUE;
+
+    return TRUE;
 }
 
 static gboolean
-drd_rdp_listener_open(DrdRdpListener *self, GError **error)
+drd_rdp_listener_incoming(GSocketService    *service,
+                          GSocketConnection *connection,
+                          GObject           *source_object G_GNUC_UNUSED)
 {
-    self->listener = freerdp_listener_new();
-    if (self->listener == NULL)
+    DrdRdpListener *self = DRD_RDP_LISTENER(service);
+    g_autoptr(GError) accept_error = NULL;
+
+    if (!drd_rdp_listener_handle_connection(self, connection, &accept_error))
+    {
+        if (accept_error != NULL)
+        {
+            DRD_LOG_WARNING("Failed to handle incoming RDP connection: %s", accept_error->message);
+        }
+        else
+        {
+            DRD_LOG_WARNING("Failed to handle incoming RDP connection");
+        }
+    }
+
+    return TRUE;
+}
+
+static gboolean
+drd_rdp_listener_bind(DrdRdpListener *self, GError **error)
+{
+    g_return_val_if_fail(DRD_IS_RDP_LISTENER(self), FALSE);
+
+    if (self->is_bound)
     {
         g_set_error_literal(error,
                             G_IO_ERROR,
-                            G_IO_ERROR_FAILED,
-                            "freerdp_listener_new returned null");
+                            G_IO_ERROR_EXISTS,
+                            "Listener already bound");
         return FALSE;
     }
 
-    self->listener->param1 = self;
-    self->listener->PeerAccepted = drd_listener_peer_accepted;
+    GSocketListener *listener = G_SOCKET_LISTENER(self);
+    // g_socket_listener_close(listener);
 
-    if (self->listener->Open == NULL ||
-        !self->listener->Open(self->listener, self->bind_address, self->port))
+    if (self->bind_address == NULL || *self->bind_address == '\0' ||
+        g_str_equal(self->bind_address, "0.0.0.0") ||
+        g_str_equal(self->bind_address, "::"))
     {
-        g_set_error(error,
-                    G_IO_ERROR,
-                    G_IO_ERROR_FAILED,
-                    "Failed to open listening socket on %s:%u",
-                    self->bind_address,
-                    self->port);
-        return FALSE;
+        if (!g_socket_listener_add_inet_port(listener, self->port, NULL, error))
+        {
+            return FALSE;
+        }
     }
-
-    self->tick_id = g_timeout_add(16, drd_rdp_listener_iterate, self);
-    if (self->tick_id == 0)
+    else
     {
-        g_set_error_literal(error,
-                            G_IO_ERROR,
-                            G_IO_ERROR_FAILED,
-                            "Failed to create listener tick source");
-        return FALSE;
+        g_autoptr(GInetAddress) inet_address = g_inet_address_new_from_string(self->bind_address);
+        if (inet_address == NULL)
+        {
+            g_set_error(error,
+                        G_IO_ERROR,
+                        G_IO_ERROR_INVALID_ARGUMENT,
+                        "Invalid bind address %s",
+                        self->bind_address);
+            return FALSE;
+        }
+
+        g_autoptr(GSocketAddress) socket_address =
+            g_inet_socket_address_new(inet_address, self->port);
+
+        if (!g_socket_listener_add_address(listener,
+                                           socket_address,
+                                           G_SOCKET_TYPE_STREAM,
+                                           G_SOCKET_PROTOCOL_TCP,
+                                           NULL,
+                                           NULL,
+                                           error))
+        {
+            return FALSE;
+        }
     }
 
-    DRD_LOG_MESSAGE("Listener event loop armed for %s:%u (tick=16ms)",
-              self->bind_address,
-              self->port);
-
+    self->is_bound = TRUE;
     return TRUE;
 }
 
 static void
 drd_rdp_listener_stop_internal(DrdRdpListener *self)
 {
-    if (self->tick_id != 0)
+    if (self->is_bound)
     {
-        g_source_remove(self->tick_id);
-        self->tick_id = 0;
-    }
-
-    if (self->listener != NULL)
-    {
-        if (self->listener->Close != NULL)
-        {
-            self->listener->Close(self->listener);
-        }
-        freerdp_listener_free(self->listener);
-        self->listener = NULL;
+        g_socket_service_stop(G_SOCKET_SERVICE(self));
+        g_socket_listener_close(G_SOCKET_LISTENER(self));
+        self->is_bound = FALSE;
     }
 
     g_ptr_array_set_size(self->sessions, 0);
@@ -790,6 +919,12 @@ drd_rdp_listener_stop_internal(DrdRdpListener *self)
     {
         drd_server_runtime_stop(self->runtime);
     }
+
+    if (self->cancellable != NULL)
+    {
+        g_cancellable_cancel(self->cancellable);
+        g_clear_object(&self->cancellable);
+    }
 }
 
 gboolean
@@ -797,20 +932,20 @@ drd_rdp_listener_start(DrdRdpListener *self, GError **error)
 {
     g_return_val_if_fail(DRD_IS_RDP_LISTENER(self), FALSE);
 
-    if (self->listener != NULL)
+    if (!drd_rdp_listener_bind(self, error))
     {
-        g_set_error_literal(error,
-                            G_IO_ERROR,
-                            G_IO_ERROR_EXISTS,
-                            "Listener already running");
         return FALSE;
     }
 
-    if (!drd_rdp_listener_open(self, error))
+    if (self->system_mode && self->cancellable == NULL)
     {
-        drd_rdp_listener_stop_internal(self);
-        return FALSE;
+        self->cancellable = g_cancellable_new();
     }
+
+    g_socket_service_start(G_SOCKET_SERVICE(self));
+    DRD_LOG_MESSAGE("Socket service armed for %s:%u",
+                    self->bind_address != NULL ? self->bind_address : "0.0.0.0",
+                    self->port);
 
     return TRUE;
 }

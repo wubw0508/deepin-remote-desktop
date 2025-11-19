@@ -1,5 +1,14 @@
 # 变更记录
 
+## 2025-11-19：监听层切换至 GSocketService
+- **目的**：复用 gnome-remote-desktop 的 system/handover 思路，摆脱 `freerdp_listener` 轮询模型，为 system 模式后续扩展 routing token 做准备。
+- **范围**：`src/transport/drd_rdp_listener.*`、`doc/architecture.md`、`.codex/plan/gsocket-listener.md`。
+- **主要改动**：
+  1. `DrdRdpListener` 继承 `GSocketService`，通过 `g_socket_listener_add_inet_port()`/`add_address()` 绑定端口，`incoming` 回调里将 `GSocketConnection` 的 fd 复制给 `freerdp_peer`，并保留原有 TLS/NLA/输入初始化与 `DrdRdpSession` 生命周期钩子。
+  2. 移除 `freerdp_listener`/tick loop 相关字段与定时器，停止流程改为 `g_socket_service_stop()+g_socket_listener_close()`，并在 system 模式下预创建 `GCancellable`，为 handover 路径保留取消入口。
+  3. 文档补充新的监听架构序列图和 `incoming` 状态转换，计划文件同步记录任务背景与五步执行路径。
+- **影响**：监听端口完全托管给 GLib 主循环，system 模式不再依赖 FreeRDP 轮询线程，后续可直接套接 routing token/DBus handover；同时端口绑定失败时能即时获得 GIO 错误，而非沉默失败。
+
 ## 2025-11-18：认证流程收敛
 - **目的**：仅保留“NLA 开启 / NLA 关闭 + PAM 单点登录”两条路径，移除 delegate 相关代码和配置。
 - **范围**：`core/drd_config.*`、`core/drd_application.c`、`transport/drd_rdp_listener.*`、`session/drd_rdp_session.*`、`config/*.ini`、`config/deepin-remote-desktop.service`、`README.md`、`doc/architecture.md`、`.codex/plan/rdp-security-overview.md`。

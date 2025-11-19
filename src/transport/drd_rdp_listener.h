@@ -1,6 +1,6 @@
 #pragma once
 
-#include <glib-object.h>
+#include <gio/gio.h>
 
 #include "core/drd_config.h"
 
@@ -9,7 +9,7 @@ typedef struct _DrdServerRuntime DrdServerRuntime;
 G_BEGIN_DECLS
 
 #define DRD_TYPE_RDP_LISTENER (drd_rdp_listener_get_type())
-G_DECLARE_FINAL_TYPE(DrdRdpListener, drd_rdp_listener, DRD, RDP_LISTENER, GObject)
+G_DECLARE_FINAL_TYPE(DrdRdpListener, drd_rdp_listener, DRD, RDP_LISTENER, GSocketService)
 
 DrdRdpListener *drd_rdp_listener_new(const gchar *bind_address,
                                      guint16 port,

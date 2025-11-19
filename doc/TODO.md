@@ -6,10 +6,16 @@
 5. h264 编码；
 6. 硬件加速；
 7. 适配lightdm进行远程登录与RedirectPDU保持连接；
+   1. lightdm 创建一个虚拟屏幕和远程会话; done
+   2. 远程重复登录场景；
+   3. 启动lightdm greeter的 drd --handover进程
+   4. lightdm conf 配置管理
 8. 远程单点登录；
 9.  适配wayland(捕获、输入事件、剪切板)；
 10. 密钥存储；
 
+- 把drd的启动放到/etc/deepin/greeter.d 目录下，lightdm 启动虚拟屏幕greeter会话时，设置一个环境变量，读到了该环境变量，就启动drd --takeshare 进程，该进程不做端口监听，
+- 
 
 ### 单点登录
 CredSSP简介
