@@ -654,6 +654,8 @@ drd_configure_peer_settings(DrdRdpListener *self, freerdp_peer *client, GError *
         !freerdp_settings_set_bool(settings, FreeRDP_RemoteFxImageCodec, TRUE) ||
         !freerdp_settings_set_bool(settings, FreeRDP_NSCodec, TRUE) ||
         !freerdp_settings_set_bool(settings, FreeRDP_GfxH264, FALSE) ||
+        !freerdp_settings_set_bool(settings, FreeRDP_GfxAVC444v2, FALSE) ||
+        !freerdp_settings_set_bool(settings, FreeRDP_GfxAVC444, FALSE) ||
         !freerdp_settings_set_bool(settings,
                                    FreeRDP_SupportGraphicsPipeline,
                                    enable_graphics_pipeline) ||
@@ -661,11 +663,17 @@ drd_configure_peer_settings(DrdRdpListener *self, freerdp_peer *client, GError *
         !freerdp_settings_set_bool(settings, FreeRDP_HasHorizontalWheel, TRUE) ||
         !freerdp_settings_set_bool(settings, FreeRDP_HasRelativeMouseEvent, FALSE) ||
         !freerdp_settings_set_bool(settings, FreeRDP_UnicodeInput, TRUE) ||
+        !freerdp_settings_set_bool(settings, FreeRDP_HasQoeEvent, FALSE) ||
         !freerdp_settings_set_uint32(settings, FreeRDP_EncryptionLevel, ENCRYPTION_LEVEL_CLIENT_COMPATIBLE) ||
         !freerdp_settings_set_uint32(settings, FreeRDP_VCFlags, VCCAPS_COMPR_SC) ||
         !freerdp_settings_set_uint32(settings, FreeRDP_VCChunkSize, 16256) ||
         !freerdp_settings_set_uint32(settings, FreeRDP_PointerCacheSize, 100) ||
-        !freerdp_settings_set_uint32(settings, FreeRDP_MultifragMaxRequestSize, 0))
+        !freerdp_settings_set_uint32(settings, FreeRDP_MultifragMaxRequestSize, 0)||
+        !freerdp_settings_set_uint32 (settings, FreeRDP_OsMajorType,OSMAJORTYPE_UNIX)||
+        !freerdp_settings_set_uint32 (settings, FreeRDP_OsMinorType,OSMINORTYPE_PSEUDO_XSERVER)||
+        !freerdp_settings_set_bool (settings, FreeRDP_GfxSmallCache, FALSE)||
+        !freerdp_settings_set_bool (settings, FreeRDP_GfxThinClient, TRUE)||
+        !freerdp_settings_set_bool (settings, FreeRDP_SupportMultitransport, FALSE))
     {
         g_set_error_literal(error,
                             G_IO_ERROR,
