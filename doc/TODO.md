@@ -28,27 +28,25 @@
    4. 远程单点登录，使用TLS,那用户名和密码去做pam认证；
 5. 桌面共享时应该使用本地的分辨率来捕获和传输；
 6. 远程登录时应该使用客户端要求的分辨率来生成虚拟屏幕；
-7. 桌面共享中的仅屏幕共享模式；
+7. 桌面共享中的仅屏幕共享模式 view only；
 8. 远程登录中polkit在远程会话下的支持，可能需要批量进行覆盖，通过pkla和rules；
 9. 远程登录、桌面共享需要抑制锁；
 10. 远程登录时，如果尝试登录一个本地已经登录的账户，可以进入本地账户的远程共享，然后提示用户保存文档后进行注销，然后再远程登录该账户；
 11. --user进程需要配置自启动;
-12. 远程会话如何重入；需要lightdm配合，以及使用restarthandover信号；
-13. 远程登录中部分功能可能需要禁用；
-14. 其他例如greeter的提示和交互；
-15. 远程登录场景，需要禁止本地的生物认证；
-16. greeter优雅的启动handover方式；以及两个handover进程的生命周期优化；
-17. 修复运行时警告；
-18. 优化多会话管理；
-19. 远程登录断开连接后注销；
-20. 远程登录禁止切换用户；
-21. 多个会话开启桌面共享时，端口号自动累加；
-22. lightdm remote session 需要sessionid和clientid；需要给出一个详细的方案
-
-23. system监听remote session的sessionid change信号，system进程的object不变，dm的session可以变；
-24. 重复登录时，lightdm不能再次open session
-25. 远程登录时，无法切换到已经登录的用户
-26. 需要支持无用户名场景
+12. 远程登录中部分功能可能需要禁用；
+13. 其他例如greeter的提示和交互；
+14. 远程登录场景，需要禁止本地的生物认证；
+15. greeter优雅的启动handover方式；以及两个handover进程的生命周期优化；
+16. 修复运行时警告；
+17. 远程登录断开连接后注销；
+18. 需要支持无用户名场景
+19. 远程登录禁止切换用户；、
+20. 多会话和会话重入管理：
+    1.  lightdm remote session 需要sessionid和clientid；需要给出一个详细的方案
+    2.  system监听remote session的sessionid change信号，system进程的object不变，dm的session可以变；
+    3.  重复登录时，lightdm不能再次open session
+    4.  远程登录时，无法切换到已经登录的用户：远程会话如何重入；需要lightdm配合，以及使用restarthandover信号；
+    5.  多个会话开启桌面共享时，端口号自动累加；
 
 ## 主要模块
 1. 客户端连接管理

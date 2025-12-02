@@ -1,0 +1,32 @@
+@startuml 远程单点登录
+participant RDP客户端 as client
+participant "drd-system" as system
+participant pam_sso
+participant lightdm
+participant login1
+participant 图形服务器 as xorg
+participant "systemd-user" as systemd
+participant "drd-handover(用户会话)" as handover_s
+
+
+system -> system:监听端口并进行TLS安全配置
+client -> system:请求连接
+system -> system:获取请求的用户名和密码
+system -> pam_sso:校验用户名和密码
+system <-- pam_sso
+system -> lightdm:通过 fd 传输用户名和密码，创建远程会话
+lightdm -> xorg:启动图形服务器创建虚拟屏幕
+lightdm <-- xorg
+lightdm -> login1:通过 pam(lightdm) 创建用户会话
+lightdm <-- login1
+systemd -> systemd:启动 handover
+handover_s -> system:请求接管
+system -> client:发送重定向 PDU(携带 routing token)
+client -> system:重连(携带 routing token)
+system -> system:发出可以接管的信号
+handover_s -> system:开始接管
+system --> handover_s:将 fd 返回给 handover 进程
+loop
+handover_s --> client:开始共享用户会话界面并处理输入事件
+end
+@enduml

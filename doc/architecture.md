@@ -5,6 +5,64 @@
 - 以 C(GLib/GObject) + FreeRDP 为主干，保持单一职责、可替换、易调试；按能力分阶段落地，确保每个增量可独立验证。
 - 模块化运行时：应用入口 → 配置/安全 → 采集 & 编码 → RDP 传输 → 虚拟通道/设备 → 服务治理（监控、策略、自动化恢复）。
 
+## 设计原则
+- **技术栈约束**：核心逻辑以 C17 + GLib/GObject 构建，所有 RDP 协议处理依赖 FreeRDP 3.x；UI/LightDM 扩展采用 Typst/DBus 文档约定，保持跨发行版可移植性。
+- **Deepin 规范**：严格对齐 deepin/UOS 的 systemd unit、DBus policy、PAM service 命名，运行用户与权限配置均遵循发行版安全基线。
+- **SOLID/KISS/YAGNI**：监听器、会话、编码、system/handover、LightDM Seat 各自承担单一职责；抽象层（如 `DrdServerRuntime`、`DrdRdpGraphicsPipeline`、`DrdRemoteClient`）稳定，对象替换不影响调用方；仅实现当前必须的能力，延伸功能（rdpsnd、Clipboard、SSO API）通过 TODO/规划记录。
+- **DRY/可观测性**：公共设施（帧结构、日志 writer、routing token 工具）集中实现，全局日志沿用统一 writer，避免在 handover/system 模式中产生重复实现。
+- **安全默认开启**：所有模式默认 TLS+NLA，只有在显式 `--disable-nla`/`[auth] enable_nla=false` 时才切换 PAM SSO；凭据统一通过一次性 token/SAM 文件传递，handover/take client 不接触真实账号密码。
+
+## 系统组件视图
+
+```mermaid
+flowchart LR
+    subgraph ClientSide["RDP Client"]
+        CLI1[mstsc/FreeRDP/Remmina]
+    end
+    subgraph SystemDaemon["drd-system (GSocketService)"]
+        Listener[DrdRdpListener\nTLS+NLA]
+        Delegate[DrdSystemDaemon\nRouting Token/DBus]
+    end
+    subgraph Dispatcher["DBus: org.deepin.RemoteDesktop"]
+        Disp[Rdp.Dispatcher]
+        HandoverSkeleton[Rdp.Handover objects]
+    end
+    subgraph Handover["drd-handover"]
+        GreeterHandover[Greeter HandOver\nCapture+Encoder]
+        UserHandover[User HandOver\nCapture+Encoder]
+    end
+    subgraph UserSession["drd-user"]
+        UserRuntime[DrdServerRuntime\nCapture/Encoding/Input]
+    end
+    subgraph LightDM["LightDM SeatRDP"]
+        RemoteFactory[RemoteDisplayFactory]
+        SeatRDP[SeatRDP]
+    end
+    subgraph UI["桌面控制中心/任务栏"]
+        ControlCenter[Control Center UI]
+    end
+
+    CLI1 --> |TCP/TLS| Listener
+    Listener --> Delegate
+    Delegate --> Disp
+    Disp --> GreeterHandover
+    Disp --> UserHandover
+    GreeterHandover --> |RDP 接管| CLI1
+    UserHandover --> |RDP 接管| CLI1
+    Listener --> UserRuntime
+    LightDM <-->|DBus| Disp
+    LightDM --> RemoteFactory
+    RemoteFactory --> Handover
+    SeatRDP --> |环境/虚拟屏幕| GreeterHandover
+    UI --> Disp
+    UI --> UserRuntime
+```
+
+- `drd-system` 以 root/`deepin-remote-desktop` 用户托管监听端口与 routing token，负责调度 handover。
+- `drd-handover` 运行在 greeter 与用户会话，继承 system 提供的 TLS/NLA 一次性凭据，完成具体采集/编码/传输。
+- `drd-user` 为桌面共享模式的常驻进程，直接在用户会话内监听端口。
+- LightDM RemoteDisplayFactory/SeatRDP 通过 DBus 与 system/handover 交互，创建远程 seat、管理虚拟屏幕，并与 UI 控制中心共享状态。
+
 ## 当前能力概览
 - **显示/编码**：X11/XDamage 抓屏 + 单帧队列，RFX Progressive（默认 RLGR1）与 Raw 回退，关键帧/上下文管理齐备。
 - **传输**：FreeRDP 监听 + TLS/NLA 强制，渲染线程串行“等待帧→编码→Rdpgfx/SurfaceBits 发送”，具备 ACK 背压与自动回退逻辑。
@@ -43,7 +101,7 @@ flowchart LR
 ### 3. 编码层
 - `encoding/drd_encoding_manager`：统一编码配置、调度；对外暴露帧编码接口，并在 Progressive 超出多片段限制时自动回退 RAW。
 - `encoding/drd_raw_encoder`：原始帧编码器（BGRX → bottom-up），兼容旧客户端。
-- `encoding/drd_rfx_encoder`：基于 RemoteFX 的压缩实现，支持帧差分与底图缓存；Progressive 路径固定使用 RLGR1（`rfx_context_set_mode(RLGR1)`）保持与 mstsc/gnome-remote-desktop 一致，SurfaceBits 仍以 RLGR3 为主。
+- `encoding/drd_rfx_encoder`：基于 RemoteFX 的压缩实现，支持帧差分与底图缓存；Progressive 路径固定使用 RLGR1（`rfx_context_set_mode(RLGR1)`）保持与 mstsc/gnome-remote-desktop 一致，SurfaceBits 仍以 RLGR3 为主。其 `collect_dirty_rects()` 采用“tile 哈希 + 按需逐行校验”收集脏矩形，并直接生成 `RFX_RECT` 输入，详见 `doc/collect_dirty_rects.md`。
 
 ### 4. 输入层
 - `input/drd_input_dispatcher`：键鼠事件注入入口，管理 X11 注入后端与 FreeRDP 回调。
@@ -144,10 +202,251 @@ flowchart TB
 - systemd/DBus 入口：为桌面环境或守护进程模式提供 handover，确保会话断线后自动恢复监听。
 - 观测与策略：指标/trace/日志打点、PAM/LDAP 集成、会话配额与带宽策略；当前仅有基础日志，需逐步补齐。
 
+### 10. 服务重定向管理
+- **职责**：串联 system 守护、greeter handover、用户 handover 乃至单点登录过程，确保客户端无感切换 RDP 服务端。
+- **机制**：
+  - system 模式首次接受连接时注册 `DrdRemoteClient`，随机生成 `routing_token` 并导出对应的 `Rdp.Handover` DBus 对象，等待 handover 进程领取。
+  - greeter/用户 handover 在 `RequestHandover` → `StartHandover` 中获取 object path 与一次性凭据，system 守护将 routing token/临时密码封装进 Server Redirection PDU，驱动客户端自动重连。
+  - system 在捕获携带既有 token 的二次连接时，直接通过 `TakeClientReady`/`TakeClient` 将 socket fd 转交 handover，整个过程不会重复握手。
+- 单点登录（PAM SSO）沿用相同链路，只是 `StartHandover` 下发的凭据来自 pam_sso 管道，handover 进程在接管 FD 后立即注入 PAM 会话，无需客户端再次输入。
+
+### 11. 远程会话管理
+- `routing_token`、`client_id` 与 `session_id` 三元组确保一次远程登录能跨 greeter→用户→断线重入保持一致。
+- handover session（system DBus 对象）和 remote session（LightDM RemoteDisplayFactory 对象）一一匹配，属性变更信号驱动 session 迁移：
+  - 首次登录：client_id 保持不变，session_id 随 LightDM open session 更新；system 监听 signal 后刷新对应 handover session。
+  - 复用已存在会话：session_id 不变，client_id 被 greeter 替换；system 监听 `ClientIdChanged` 并广播 `RestartHandover`，handover 重新发送 Redirect。
+- `DrdRemoteClient` 记录 `assigned`/`handover_count`，同一路径可复用 object path，支持多段 handover 阶段化处理。
+
+### 12. 远程会话权限控制
+- 统一通过 polkit `pkla` 与 `rules` 覆盖策略：远程会话默认视为非本地 seat，需要显式授权才能执行敏感操作。
+- SeatRDP 设置 `XDG_SEAT=` 空值 + `DEEPIN_REMOTE_SESSION=TRUE`，配合 polkitd 的 seat 检测逻辑，确保授权策略可区分本地/远程。
+- DBus 控制接口与任务栏/控制中心均走 polkit 授权，避免 UI 进程绕过系统策略。
+
+### 13. 配置与隐私管理
+- 配置采用 INI + drop-in（`/usr/share/deepin-remote-desktop/config.d` → `/etc/deepin-remote-desktop/config.d` → `~/.local/share/...`）三层覆盖，CLI 选项可即时覆盖 `port`、`TLS`、`encoder`、`NLA`、`runtime_mode`。
+- 敏感字段（NLA 密码、PAM 凭据）仅在内存保留，日志使用 `**` 掩码；handover 仅接触一次性凭据，不落盘真实账号。
+- 控制中心通过 DBus 下发配置时也遵循上述优先级，`DrdConfig` 在解析后立即合并 TLS 路径并确保只实例化一次。
+
+### 14. 进程管理
+- `drd-user`：systemd user service，在 `graphical-session-pre.target` 启动，负责桌面共享，断线时保持运行。
+- `drd-system`：systemd system service，运行身份 `deepin-remote-desktop`，监听远程登录端口，并暴露 DBus Dispatcher。
+- `drd-handover`：greeter 阶段通过 `/etc/deepin/greeters.d/11-deepin-remote-desktop-handover` 脚本启动，用户会话阶段由 systemd user service 按需拉起。Server Redirection 成功后通常退出，避免占用资源。
+
+### 15. 虚拟屏幕与 DISPLAY 管理
+- LightDM 通过 `xserver-xorg-video-dummy` 创建虚拟屏幕，`Section "Screen"` 中可配置分辨率/刷新率，默认 DISPLAY 起始值为 `:100`，防止与本地图形会话冲突。
+- handover/user 进程会读取该 DISPLAY，启动捕获/输入链路前设置相同变量，实现“远程登录 = 虚拟席位”。
+- 虚拟屏幕卸载由 LightDM seat 管理，hand-over 退出后 DISPLAY 会被回收。
+
+### 16. RDP Seat 管理
+- SeatRDP 扩展 LightDM，在 `setup()` 中创建 remote seat，`create_display_server()` 配置 dummy X server，`create_session()` 为 greeter 与用户会话设置 `DEEPIN_REMOTE_SESSION=TRUE` 与空 seat。
+- `RequestHandover`/`CreateSingleLogonSession` 接口在 SeatRDP 内实现，与 system 守护的 DBus API 打通，确保 lightdm 知晓 handover session 的 client_id 与 session_id。
+- 通过环境变量与 `udisks/polkit` 兼容策略，阻止远程会话直接访问本地硬件。
+
+### 17. UI 模块管理
+- 控制中心、任务栏等 UI 组件通过 DBus 读取 `org.deepin.RemoteDesktop.Rdp.Server` 属性，展示端口/TLS 指纹/是否 ViewOnly。
+- 远程登录场景下可引导用户启停 systemd service、轮换证书或查看路由 token 状态；桌面共享时可在任务栏提示当前连接并允许断开。
+- UI 会根据 `DEEPIN_REMOTE_SESSION` 判断是否隐藏特定功能（如本地显示设置），避免远程 session 误操作。
+
+## 关键接口
+
+### CLI 与配置文件
+- 所有模式共享一套 CLI 选项；与 `doc/概要设计.typ` 一致，重要参数如下：
+
+```shell
+deepin-remote-desktop \
+  -p, --port=PORT             # 默认 3390，可在 system/user/handover 间复用
+  --cert=FILE                 # TLS 证书 PEM
+  --key=FILE                  # TLS 私钥 PEM
+  -c, --config=FILE           # INI 配置路径
+  --encoder=MODE              # raw|rfx
+  --nla-username=USER         # 静态 NLA 账号
+  --nla-password=PASS         # 静态 NLA 密码
+  --enable-nla|--disable-nla  # 强制开关 NLA
+  --mode=MODE                 # user|system|handover
+```
+
+- 完整配置示例（位于 `config.d`）：
+
+```ini
+[server]
+port=3389
+
+[tls]
+certificate=/usr/share/deepin-remote-desktop/certs/server.crt
+private_key=/usr/share/deepin-remote-desktop/certs/server.key
+
+[encoding]
+mode=rfx
+enable_diff=true
+
+[auth]
+username=uos
+password=1
+enable_nla=true
+pam_service=deepin-remote-sso
+
+[service]
+runtime_mode=handover
+rdp_sso=false
+```
+
+### LightDM RemoteDisplayFactory
+- LightDM 侧通过 `org.deepin.DisplayManager.RemoteDisplayFactory` 创建远程 greeter/SSO 会话，并将 client_id/尺寸/地址透传给 system daemon：
+
+```xml
+<node>
+  <interface name="org.deepin.DisplayManager.RemoteDisplayFactory.Session">
+    <property name="UserName" type="s" access="read"/>
+    <property name="Address" type="s" access="read"/>
+  </interface>
+  <interface name="org.deepin.DisplayManager.RemoteDisplayFactory">
+    <method name="CreateRemoteGreeterDisplay">
+      <arg name="client_id" direction="in" type="u"/>
+      <arg name="width" direction="in" type="u"/>
+      <arg name="height" direction="in" type="u"/>
+      <arg name="address" direction="in" type="s"/>
+      <arg name="session_path" direction="out" type="o"/>
+    </method>
+    <method name="CreateSingleLogonSession">
+      <annotation name="org.gtk.GDBus.C.UnixFD" value="true" />
+      <arg name="client_id" direction="in" type="y"/>
+      <arg name="width" direction="in" type="u"/>
+      <arg name="height" direction="in" type="u"/>
+      <arg name="pipe_fd" direction="in" type="h"/>
+      <arg name="address" direction="in" type="s"/>
+      <arg name="session_path" direction="out" type="o"/>
+    </method>
+  </interface>
+</node>
+```
+
+### org.deepin.RemoteDesktop DBus
+- system 守护导出 `org.deepin.RemoteDesktop.Rdp.Server/Dispatcher/Handover`，接口定义如下：
+
+```xml
+<node>
+  <interface name="org.deepin.RemoteDesktop.Rdp.Server">
+    <property name="Enabled" type="b" access="read" />
+    <property name="Port" type="i" access="read" />
+    <property name="TlsCert" type="s" access="read" />
+    <property name="TlsFingerprint" type="s" access="read" />
+    <property name="TlsKey" type="s" access="read" />
+    <property name="ViewOnly" type="b" access="read" />
+  </interface>
+  <interface name="org.deepin.RemoteDesktop.Rdp.Dispatcher">
+    <method name="RequestHandover">
+      <arg name="handover" direction="out" type="o" />
+    </method>
+  </interface>
+  <interface name="org.deepin.RemoteDesktop.Rdp.Handover">
+    <method name="StartHandover">
+      <arg name="username" direction="in" type="s" />
+      <arg name="password" direction="in" type="s" />
+      <arg name="certificate" direction="out" type="s" />
+      <arg name="key" direction="out" type="s" />
+    </method>
+    <signal name="RedirectClient">
+      <arg name="routing_token" type="s" />
+      <arg name="username" type="s" />
+      <arg name="password" type="s" />
+    </signal>
+    <signal name="TakeClientReady">
+      <arg name="use_system_credentials" type="b" />
+    </signal>
+    <method name="TakeClient">
+      <annotation name="org.gtk.GDBus.C.UnixFD" value="true" />
+      <arg name="fd" direction="out" type="h" />
+    </method>
+    <signal name="RestartHandover" />
+  </interface>
+</node>
+```
+
 ## 数据流简述
 1. 应用启动后创建 `DrdServerRuntime`，合并配置与 TLS 凭据，并在 `prepare_stream()` 中依次启动 capture/input/encoder。
 2. `DrdCaptureManager` 启动 `DrdX11Capture`，将最新 `DrdFrame` 写入只保留一帧的 `DrdFrameQueue`；不存在额外编码线程或队列，capture 线程只负责刷新画面。
 3. 会话激活后，`drd_rdp_session_render_thread()` 通过 `drd_server_runtime_pull_encoded_frame()` 同步等待帧并即时编码：若 Graphics Pipeline 就绪则走 Progressive（成功后将 runtime transport 设为 `DRD_FRAME_TRANSPORT_GRAPHICS_PIPELINE`），否则通过 `SurfaceBits` + `SurfaceFrameMarker` 推送，Raw 帧按行拆分以满足多片段上限。`drd_rdp_session_pump()` 仅在 renderer 尚未启动时退化为 SurfaceBits 发送。
+
+## 关键流程
+
+### 桌面共享（user 模式）
+- user 模式直接运行在当前桌面会话，监听端口后立即启动 capture/input/encoder，并允许多个客户端同时连接（`DrdRdpSession` 队列管理）。
+- TLS+NLA 默认开启，也可针对桌面共享服务配置 view-only 模式。
+- 断线不会退出进程，systemd user service 仅在显式禁用时停止。
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant Listener as drd-user Listener
+    participant Runtime as ServerRuntime
+    participant Session as DrdRdpSession
+    Client->>Listener: TCP/TLS + CredSSP
+    Listener->>Runtime: prepare_stream()
+    Listener->>Session: drd_rdp_session_new()
+    Session->>Runtime: pull_encoded_frame()
+    Runtime-->>Session: DrdEncodedFrame
+    Session->>Client: SurfaceBits / Rdpgfx Progressive
+    Client-->>Session: Input events
+    Session->>Runtime: dispatch input via XTest
+```
+
+### 远程 Greeter 登录
+- system 监听端口 → 生成 client_id/routing_token → 导出 handover session。
+- LightDM RemoteDisplayFactory 创建 remote session，greeter handover 请求 handover 对象并发起 `StartHandover`，system 发送 Server Redirection，客户端携带 routing token 重连。
+- system 匹配 token 后通知 greeter handover `TakeClientReady`，handover 抢占 fd、完成握手并推流虚拟屏幕。
+- 用户输入凭据后，LightDM open session，session_id 更新，system 监听 signal，等待下一阶段 handover。
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant System as drd-system
+    participant LightDM
+    participant Greeter as Greeter Handover
+    participant User as User Handover
+
+    Client->>System: 初次连接
+    System->>System: register client + routing token
+    System->>LightDM: Request remote session
+    LightDM-->>Greeter: 启动 handover (session_id=greeter)
+    Greeter->>System: RequestHandover
+    System-->>Greeter: Handover path
+    Greeter->>System: StartHandover
+    System->>Client: Server Redirection (token)
+    Client->>System: 重连（带 token）
+    System-->>Greeter: TakeClientReady
+    Greeter->>System: TakeClient(fd)
+    Greeter->>Client: 握手/推流
+```
+
+### 远程单点登录（TLS+PAM）
+- system 接受连接后读取 Client Info 用户名/密码，将凭据写入 PAM pipe，通过 `CreateSingleLogonSession` 通知 LightDM。
+- handover `RequestHandover` → `StartHandover` 后直接接收 pam_sso 下发的一次性凭据，客户端在第二次 CredSSP 时复用同一 TLS 身份。
+- handover 在 `TakeClient` 后立即调用 PAM，成功后启动 renderer 线程。
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant System
+    participant PAM as PAM/LightDM
+    participant Handover
+
+    Client->>System: TLS + Client Info(user/pass)
+    System->>PAM: pipe_fd 写入凭据
+    PAM-->>System: 成功 + session_id
+    System->>Handover: RequestHandover/Start
+    Handover-->>System: Request TLS cert/key
+    System->>Client: Server Redirection + 一次性凭据
+    Client->>System: 重连
+    System-->>Handover: TakeClientReady
+    Handover->>System: TakeClient
+    Handover->>PAM: pam_open_session(username)
+    Handover->>Client: 推流
+```
+
+### 复用已有远程会话
+- **Greeter 重进现有会话**：若 LightDM 检测到用户已有 session，不再 `open_session`；而是将新的 greeter remote session 的 client_id 写回旧会话，system 监听到 attribute 变化后向 handover 发 `RestartHandover`，原 handover 发送 Redirect 并退出，客户端重连后被用户 handover 接管。
+- **远程单点登录重进**：LightDM 在校验凭据后直接更新已有 remote session 的 client_id，system 同样触发 `RestartHandover` → Redirect → TakeClientReady 流程，整个过程 session_id 保持不变。
+- 这两条路径都依赖 routing token → client_id 的互逆关系，确保任何阶段都能找到唯一 handover session。
 
 ## 现代 RDP 功能蓝图
 - **显示链路**：现状为 X11 抓屏 + RFX/Raw；规划 H.264/AVC444、硬件加速、频道自适应（RFX↔H.264）与多显示器/DisplayControl。
@@ -204,11 +503,6 @@ sequenceDiagram
     PAM-->>SES: session handle
     SES->>UI: renderer threads run under authenticated user
 ```
-
-## 设计原则落实
-- **SOLID**：各模块限定单一职责；监听器依赖抽象的 runtime；待迁移的编码/输入将通过接口剥离具体实现。
-- **KISS/YAGNI**：阶段性仅实现最小可运行路径（监听 + 采集），编码/输入按需延伸。
-- **DRY**：帧结构、队列作为共享组件供捕获/编码/传输复用。
 
 ## System 模式与 systemd 托管
 - `--system` 仅允许 root 启动（建议通过 systemd 管理），在 `[auth] enable_nla=false` 时默认使用 `deepin-remote-desktop-system` PAM service，且不启动采集/编码线程。

@@ -1,0 +1,130 @@
+@startuml KeyDataStructures
+skinparam backgroundColor #ffffff
+skinparam class {
+  BackgroundColor<<Core>> #f5f5ff
+  BackgroundColor<<Session>> #f5fff5
+  BackgroundColor<<System>> #fff5f5
+  BackgroundColor<<Transport>> #f5ffff
+  BackgroundColor<<DBus>> #fffaf5
+  BackgroundColor<<LightDM>> #fff5ff
+  ArrowColor #5b5b5b
+  BorderColor #5b5b5b
+  FontColor #222222
+}
+
+package core {
+  class DrdServerRuntime <<Core>> {
+    -DrdCaptureManager *capture
+    -DrdEncodingManager *encoder
+    -DrdInputDispatcher *input
+    -DrdTlsCredentials *tls
+    -DrdEncodingOptions encoding_options
+    -DrdFrameTransport transport_mode
+    +gboolean prepare_stream(options, error)
+    +gboolean pull_encoded_frame(timeout, out_frame, error)
+    +void set_transport(mode)
+    +DrdFrameCodec get_codec()
+  }
+
+  class DrdCaptureManager <<Core>>
+  class DrdEncodingManager <<Core>>
+  class DrdInputDispatcher <<Core>>
+  class DrdTlsCredentials <<Core>> {
+    -gchar *certificate_pem
+    -gchar *private_key_pem
+    -GFileMonitor *monitor
+    +void reload()
+    +const gchar *get_certificate()
+  }
+}
+
+package session {
+  class DrdRdpSession <<Session>> {
+    -freerdp_peer *peer
+    -DrdServerRuntime *runtime
+    -DrdRdpGraphicsPipeline *graphics_pipeline
+    -GThread *render_thread
+    -DrdLocalSession *local_session
+    -DrdRdpSessionClosedFunc closed_cb
+    +void prepare()
+    +void activate()
+    +void request_keyframe()
+    +void close(error)
+  }
+
+  class DrdRdpGraphicsPipeline <<Session>> {
+    -RdpgfxServerContext *rdpgfx_context
+    -guint16 surface_id
+    -guint max_outstanding_frames
+    -gboolean needs_keyframe
+    +gboolean submit(frame)
+    +void request_keyframe()
+    +gboolean wait_for_capacity(timeout)
+  }
+}
+
+package system {
+  class DrdRemoteClient <<System>> {
+    -DrdSystemDaemon *daemon
+    -gchar *remote_id
+    -DrdRoutingTokenInfo *routing
+    -GSocketConnection *connection
+    -DrdRdpSession *session
+    -gboolean use_system_credentials
+    +void assign_session()
+    +void redirect()
+  }
+
+  class DrdSystemDaemon <<System>> {
+    -GHashTable *remote_clients
+    -GQueue *pending_clients
+    +DrdRemoteClient *find_by_token(token)
+    +void request_handover()
+  }
+}
+
+package transport {
+  class DrdRdpListener <<Transport>> {
+    -GSocketService *service
+    -DrdServerRuntime *runtime
+    +gboolean delegate(connection)
+    +void on_session_ready(session, connection)
+  }
+}
+
+package dbus {
+  class DrdDBusRemoteDesktopRdpHandover <<DBus>> {
+    +StartHandover(username, password)
+    +TakeClient(fd)
+    +GetSystemCredentials()
+    +RedirectClient(token)
+  }
+}
+
+package LightDM {
+  class SeatRDP <<LightDM>> {
+    -LightDMSeat parent_instance
+    +void setup(display_server)
+    +void create_session(user)
+    +void run_script(path, envp)
+  }
+}
+
+DrdServerRuntime *-- DrdCaptureManager : 采集组件
+DrdServerRuntime *-- DrdEncodingManager : 编码组件
+DrdServerRuntime *-- DrdInputDispatcher : 输入调度
+DrdServerRuntime *-- DrdTlsCredentials : TLS凭据
+DrdRdpSession --> DrdServerRuntime : 引用运行时
+DrdRdpSession *-- DrdRdpGraphicsPipeline : 驱动图形
+DrdRdpListener --> DrdRdpSession : 创建会话
+DrdRdpListener --> DrdRemoteClient : 解析RoutingToken
+DrdRdpListener --> DrdServerRuntime : 注入运行参数
+DrdRemoteClient --> DrdRdpSession : 接管连接
+DrdSystemDaemon o-- DrdRemoteClient : 生命周期管理
+DrdSystemDaemon --> SeatRDP : 协同LightDM
+DrdSystemDaemon --> DrdTlsCredentials : 刷新凭据
+DrdRemoteClient --> DrdDBusRemoteDesktopRdpHandover : 导出DBus对象
+DrdDBusRemoteDesktopRdpHandover --> DrdSystemDaemon : Handover通知
+SeatRDP ..> DrdRdpSession : 触发远程会话
+
+@enduml

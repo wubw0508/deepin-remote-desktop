@@ -1,0 +1,49 @@
+@startuml 远程 Greeter 登录
+participant RDP客户端 as client
+participant "drd-system" as system
+participant lightdm
+participant login1
+participant 图形服务器 as xorg
+participant greeter
+participant "drd-handover(登录会话)" as handover_g
+participant "systemd-user" as systemd
+participant "drd-handover(用户会话)" as handover_s
+
+
+system -> system:监听端口并进行NLA+TLS安全配置
+client -> system:请求连接
+system -> system:安全校验
+system -> lightdm:创建远程会话
+lightdm -> xorg:启动图形服务器创建虚拟屏幕
+lightdm <-- xorg
+lightdm -> login1:通过 pam 创建 greeter 会话
+lightdm <-- login1
+lightdm -> greeter:启动 greeter
+greeter -> handover_g:启动 handover 进程
+greeter <-- handover_g
+system <-- lightdm
+handover_g -> system:请求接管
+system --> handover_g
+system -> client:发送重定向 PDU(携带 routing token)
+client -> system:重连(携带 routing token)
+system -> system:发出可以接管的信号
+handover_g -> system:开始接管
+system --> handover_g:将 fd 返回给 handover 进程
+loop
+handover_g --> client:开始共享 greeter并处理输入事件
+end
+greeter -> lightdm:用户完成认证
+lightdm -> login1:通过 pam 创建用户会话
+lightdm <-- login1
+systemd -> systemd:启动 handover
+handover_s -> system:请求接管
+system -> system:发出需要客户端重定向的信号
+handover_g -> client:发送重定向 PDU(携带 routing token)并断开连接
+client -> system:重连(携带 routing token)
+system -> system:发出可以接管的信号
+handover_s -> system:开始接管
+system --> handover_s:将 fd 返回给 handover 进程
+loop
+handover_s --> client:开始共享用户会话界面并处理输入事件
+end
+@enduml

@@ -1,6 +1,52 @@
 # 变更记录
 # 变更记录
 
+## 2025-12-01：概要设计 Typst 文档错别字与标点优化
+- **目的**：清理 `doc/远程桌面概要设计.typ` 中的错别字、大小写与标点问题，使术语、流程描述和安全策略表述更精准。
+- **范围**：`doc/远程桌面概要设计.typ`、`doc/changelog.md`、`.codex/plan/doc_typ_review.md`。
+- **主要改动**：
+  1. 统一 LightDM、Greeter、RDP Server Redirection 等术语写法，并在连接管理、服务重定向、远程会话章节补充更严谨的机制描述。
+  2. 规范 CLI/配置参数、流程段落与列表的标点格式，修正 `UUID`、`DBus path`、`Redirect PDU` 等大小写及空格问题，消除多处英文/中文混用的半角符号。
+  3. 调整人机交互、非功能性、部署章节的语句，使安全、性能、隐私条目以完整句式呈现，便于评审复用。
+- **影响**：概要设计文档表达更清晰，关键流程对照实现细节更容易理解，后续在架构评审或需求讨论时可直接引用，减少语义歧义。
+
+## 2025-12-01：architecture 文档同步概要设计
+- **目的**：让 `doc/architecture.md` 与 `doc/概要设计.typ` 的结构、模块和流程保持一致，补充 LightDM/DBus 接口以及运行模式图，便于经验型开发者统一参考。
+- **范围**：`doc/architecture.md`、`doc/changelog.md`、`.codex/plan/architecture-doc-refresh.md`。
+- **主要改动**：
+  1. 在架构文档开头新增设计原则与整体组件 mermaid 图，展示 drd-system/hand-over/user 与 LightDM、控制中心的交互关系。
+  2. 扩展模块章节，补充服务重定向、远程会话/权限、配置与隐私、进程/虚拟屏幕/RDP seat/UI 管理等内容，并引入 CLI/INI/DBus 接口清单。
+  3. 新增“关键流程”章节，使用 mermaid 序列图描述桌面共享、远程 Greeter 登录、远程 SSO 以及会话复用；同步记录计划文件进度。
+- **影响**：架构文档可以直接映射到概要设计与现有实现，评审与需求讨论时无需在多个文件间跳转；新图表为后续 UML/Typst 导出奠定素材。
+
+## 2025-12-01：概要设计关键结构与非功能章节优化
+- **目的**：让概要设计对核心数据结构、性能与可靠性策略的描述与当前 C/GLib 实现保持一致，并为后续渲染 PlantUML 类图做好准备。
+- **范围**：`doc/概要设计.typ`、`doc/uml/key-data-structures.puml`、`.codex/plan/文档优化.md`、`doc/changelog.md`。
+- **主要改动**：
+  1. 新增 `doc/uml/key-data-structures.puml`，用类图展示 `DrdServerRuntime`、`DrdRdpSession`、`DrdRemoteClient` 等之间的依赖关系，便于后续导出 PNG 并嵌入 Typst 文档。
+  2. `doc/概要设计.typ` 在“关键数据结构设计”章节引用新图并扩写各结构字段/职责；“性能”与“可靠性”章节结合 runtime、Rdpgfx 背压、routing token 等实现细节重写描述，移除过时 TODO。
+  3. `.codex/plan/文档优化.md` 记录任务背景与步骤，便于追踪执行过程；本文件同步登记改动。
+  4. 补充 `DrdRdpListener` 与 DBus Handover 在类图中的关系，并在性能章节加入 Rdpgfx ACK 时序的 mermaid 片段与关键参数表，量化 16ms 拉帧、3 帧背压与 SurfaceBits 回退触发条件。
+- **影响**：审阅概要设计即可了解 runtime、会话与 system 守护的职责切分与非功能策略，新建的 PlantUML 文件可复用到其他文档或 CI 产物中，减少口头同步成本。
+
+## 2025-12-01：collect_dirty_rects 机制文档
+- **目的**：沉淀 `collect_dirty_rects()` 的实现机制与性能优势，便于编码链路调优及 code review 时引用。
+- **范围**：`doc/collect_dirty_rects.md`、`doc/architecture.md`、`.codex/plan/collect_dirty_rects分析.md`、`doc/changelog.md`。
+- **主要改动**：
+  1. 新增 `doc/collect_dirty_rects.md`，以哈希→校验→矩形输出为主线描述算法流程、性能收益与潜在优化方向，并附 mermaid 流程图。
+  2. 架构文档在编码层章节补充 `collect_dirty_rects()` 摘要及交叉引用，方便读者找到详细设计说明。
+  3. 计划文件记录调研-撰写-总结的执行状态，确保任务闭环；变更记录本身同步本次文档增量。
+- **影响**：团队可直接引用文档理解 RFX 差分筛选逻辑，在分析编码瓶颈或复查脏矩形实现时有据可依，并为后续优化（如整块 `memcmp`）提供上下文。
+
+## 2025-12-01：概要设计术语补充
+- **目的**：让 `doc/概要设计.typ` 的术语说明章节覆盖当前实现中使用的核心缩写，避免评审时需要额外查阅资料。
+- **范围**：`doc/概要设计.typ`、`.codex/plan/doc-terminology.md`、`.codex/plan/desktop-sharing-remote-login.md`。
+- **主要改动**：
+  1. 在术语列表中补充 SSO、PAM、PDU 的中文说明，并结合 drd-system、LightDM、Server Redirection 等上下文描述其作用。
+  2. 补全“桌面共享”“远程登录”术语定义，区分 user 模式与 system+handover 模式的职责及安全策略。
+  3. 建立并完成 `.codex/plan/doc-terminology.md` 与 `.codex/plan/desktop-sharing-remote-login.md` 任务记录，追踪调研、撰写与文档同步状态。
+- **影响**：阅读概要设计即可理解远程单点登录、PAM 认证链路以及 RDP PDU 含义，后续讨论可直接引用该章节。
+
 ## 2025-11-25：system TLS 重连崩溃修复
 - **目的**：system 监听器在一次 server redirection 后再次接受客户端时，FreeRDP 会访问上一段会话复用的 `rdpPrivateKey`，指针已经在前一次 `rdpSettings` 销毁时被释放，导致 `EVP_PKEY_up_ref()` 崩溃，需要确保每次握手都注入独立的证书/私钥对象。
 - **范围**：`src/security/drd_tls_credentials.c`、`doc/architecture.md`、`doc/changelog.md`、`.codex/plan/system-reconnect-crash.md`。
