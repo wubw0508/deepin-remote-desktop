@@ -37,7 +37,7 @@ struct _DrdRdpGraphicsPipeline
     gint outstanding_frames;
     guint max_outstanding_frames;
     guint32 channel_id;
-
+    gboolean frame_acks_suspended; /* Rdpgfx 客户端暂停 ACK 时跳过背压 */
     GMutex lock;
     /*
      * capacity_cond: Rdpgfx 背压的条件变量。当 outstanding_frames 达到上限时，
@@ -133,6 +133,7 @@ drd_rdp_graphics_pipeline_reset_locked(DrdRdpGraphicsPipeline *self)
     self->outstanding_frames = 0;
     self->surface_ready = TRUE;
     self->needs_keyframe = TRUE;
+    self->frame_acks_suspended = FALSE;
     g_cond_broadcast(&self->capacity_cond);
     return TRUE;
 }
@@ -185,6 +186,7 @@ drd_rdp_graphics_pipeline_init(DrdRdpGraphicsPipeline *self)
     self->next_frame_id = 1;
     self->max_outstanding_frames = 3;
     self->needs_keyframe = TRUE;
+    self->frame_acks_suspended = FALSE;
 }
 
 static void
@@ -293,7 +295,8 @@ drd_rdp_graphics_pipeline_can_submit(DrdRdpGraphicsPipeline *self)
 
     g_mutex_lock(&self->lock);
     gboolean ok = self->surface_ready &&
-                  self->outstanding_frames < (gint)self->max_outstanding_frames;
+                  (self->frame_acks_suspended ||
+                   self->outstanding_frames < (gint)self->max_outstanding_frames);
     g_mutex_unlock(&self->lock);
     return ok;
 }
@@ -303,7 +306,6 @@ drd_rdp_graphics_pipeline_wait_for_capacity(DrdRdpGraphicsPipeline *self,
                                             gint64 timeout_us)
 {
     g_return_val_if_fail(DRD_IS_RDP_GRAPHICS_PIPELINE(self), FALSE);
-
     /*
      * capacity 的定义：未被客户端 RDPGFX_FRAME_ACKNOWLEDGE 确认的帧数
      * (outstanding_frames) 必须始终小于 max_outstanding_frames（默认 3）。
@@ -317,7 +319,7 @@ drd_rdp_graphics_pipeline_wait_for_capacity(DrdRdpGraphicsPipeline *self,
     }
 
     g_mutex_lock(&self->lock);
-    while (self->surface_ready &&
+    while (self->surface_ready && !self->frame_acks_suspended &&
            self->outstanding_frames >= (gint)self->max_outstanding_frames)
     {
         if (timeout_us < 0)
@@ -331,7 +333,8 @@ drd_rdp_graphics_pipeline_wait_for_capacity(DrdRdpGraphicsPipeline *self,
     }
 
     gboolean ready = self->surface_ready &&
-                     self->outstanding_frames < (gint)self->max_outstanding_frames;
+                     (self->frame_acks_suspended ||
+                      self->outstanding_frames < (gint)self->max_outstanding_frames);
     g_mutex_unlock(&self->lock);
     return ready;
 }
@@ -384,7 +387,10 @@ drd_rdp_graphics_pipeline_submit_frame(DrdRdpGraphicsPipeline *self,
         return FALSE;
     }
 
-    if (self->outstanding_frames >= (gint)self->max_outstanding_frames)
+    gboolean track_ack = !self->frame_acks_suspended;
+
+    if (track_ack &&
+        self->outstanding_frames >= (gint)self->max_outstanding_frames)
     {
         g_mutex_unlock(&self->lock);
         g_set_error_literal(error,
@@ -399,7 +405,10 @@ drd_rdp_graphics_pipeline_submit_frame(DrdRdpGraphicsPipeline *self,
     {
         self->next_frame_id = 1;
     }
-    self->outstanding_frames++;
+    if (track_ack)
+    {
+        self->outstanding_frames++;
+    }
     if (frame_is_keyframe)
     {
         self->needs_keyframe = FALSE;
@@ -448,7 +457,7 @@ drd_rdp_graphics_pipeline_submit_frame(DrdRdpGraphicsPipeline *self,
     if (status != CHANNEL_RC_OK)
     {
         g_mutex_lock(&self->lock);
-        if (self->outstanding_frames > 0)
+        if (track_ack && self->outstanding_frames > 0)
         {
             self->outstanding_frames--;
         }
@@ -522,14 +531,32 @@ drd_rdpgfx_frame_ack(RdpgfxServerContext *context,
     {
         return CHANNEL_RC_OK;
     }
+    g_mutex_lock(&self->lock);
 
+    if (ack->queueDepth == SUSPEND_FRAME_ACKNOWLEDGEMENT)
+    {
+        if (!self->frame_acks_suspended)
+        {
+            DRD_LOG_MESSAGE("RDPGFX client suspended frame acknowledgements");
+        }
+        self->frame_acks_suspended = TRUE;
+        self->outstanding_frames = 0;
+        g_cond_broadcast(&self->capacity_cond);
+        g_mutex_unlock(&self->lock);
+        return CHANNEL_RC_OK;
+    }
+
+    if (self->frame_acks_suspended)
+    {
+        DRD_LOG_MESSAGE("RDPGFX client resumed frame acknowledgements");
+    }
+    self->frame_acks_suspended = FALSE;
     /*
      * 客户端在成功解码/渲染一帧 Progressive 数据后会发送 RDPGFX_FRAME_ACKNOWLEDGE_PDU，
      * 告知服务器 frameId、totalFramesDecoded 以及 queueDepth。我们只需要把
      * outstanding_frames 减 1 并唤醒等待 capacity_cond 的编码线程，保证新的帧
      * 只有在客户端确认后才继续发送。
      */
-    g_mutex_lock(&self->lock);
     if (self->outstanding_frames > 0)
     {
         self->outstanding_frames--;

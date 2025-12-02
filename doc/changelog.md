@@ -1,6 +1,15 @@
 # 变更记录
 # 变更记录
 
+## 2025-12-03：Rdpgfx ACK suspend/resume 适配完善
+- **目的**：补全提交 27f02bc8 中对 `SUSPEND_FRAME_ACKNOWLEDGEMENT` 的处理，防止客户端暂停 ACK 时 `outstanding_frames` 无限增长或在恢复后仍跳过背压。
+- **范围**：`src/session/drd_rdp_graphics_pipeline.c`、`doc/architecture.md`、`doc/changelog.md`、`.codex/plan/optimize-27f02bc8.md`。
+- **主要改动**：
+  1. `DrdRdpGraphicsPipeline` 初始化与 reset 时显式重置 `frame_acks_suspended`，`can_submit`/`wait_for_capacity`/`submit_frame` 在同一把锁内判断该状态，暂停 ACK 时不再递增 `outstanding_frames`。
+  2. `FrameAcknowledge` 回调根据 `queueDepth` 切换 suspend/resume，暂停时清空未确认帧并通过 `DRD_LOG_MESSAGE` 记录事件，恢复时重新启用背压并广播容量条件变量。
+  3. `doc/architecture.md` 补充 `frame_acks_suspended` 状态机说明与 mermaid 状态图，明确 suspend/resume 对背压的影响；计划文件更新执行进度。
+- **影响**：当 macOS 等客户端改以 `SUSPEND_FRAME_ACKNOWLEDGEMENT` 运行时，编码线程会即时解除阻塞但不会积累垃圾统计；客户端恢复 ACK 后重新从 0 计数，保持期望的三帧背压，日志也能清楚记录 suspend/resume 时刻，便于排障。
+
 ## 2025-12-01：概要设计 Typst 文档错别字与标点优化
 - **目的**：清理 `doc/远程桌面概要设计.typ` 中的错别字、大小写与标点问题，使术语、流程描述和安全策略表述更精准。
 - **范围**：`doc/远程桌面概要设计.typ`、`doc/changelog.md`、`.codex/plan/doc_typ_review.md`。

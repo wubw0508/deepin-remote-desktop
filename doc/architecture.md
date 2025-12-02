@@ -111,6 +111,16 @@ flowchart LR
 - `transport/drd_rdp_listener`：直接继承 `GSocketService`，通过 `g_socket_listener_add_*` 绑定端口，`incoming` 信号里将 `GSocketConnection` 的 fd 复制给 `freerdp_peer`，再复用既有 TLS/NLA/输入配置流程，整个监听循环交由 GLib 主循环驱动；system 模式会提前挂接 `GCancellable`，后续可扩展 handover/token 逻辑。
 - `session/drd_rdp_session`：会话状态机，维护 peer/runtime 引用、虚拟通道、事件线程与 renderer 线程。`drd_rdp_session_render_thread()` 在激活后循环：等待 Rdpgfx 容量 → 调用 `drd_server_runtime_pull_encoded_frame()`（同步等待并编码）→ 优先提交 Progressive，失败则回退 SurfaceBits（Raw 帧按行分片避免超限 payload），并负责 transport 切换、关键帧请求与桌面大小校验。
 - `session/drd_rdp_graphics_pipeline`：Rdpgfx server 适配器，负责与客户端交换 `CapsAdvertise/CapsConfirm`，在虚拟通道上执行 `ResetGraphics`/Surface 创建/帧提交；内部用 `needs_keyframe` 防止增量帧越级，并用 `capacity_cond`/`outstanding_frames` 控制 ACK 背压，当 Progressive 管线就绪时驱动运行时切换编码模式。
+- `frame_acks_suspended` 状态机：当客户端发送 `queueDepth = SUSPEND_FRAME_ACKNOWLEDGEMENT` 时立刻清空未确认帧并广播 `capacity_cond`，编码线程不再累积 `outstanding_frames`；下一个普通 ACK 抵达后自动恢复背压。这样避免长时间不 ACK 时 `outstanding_frames` 无上限膨胀，也保证 resume 后重新以 0 起步。
+
+```mermaid
+stateDiagram-v2
+    [*] --> Tracking: 默认跟踪 ACK
+    Tracking --> Suspended: frameAck.queueDepth == SUSPEND_FRAME_ACKNOWLEDGEMENT
+    Suspended --> Tracking: 下一次 ACK queueDepth != SUSPEND_FRAME_ACKNOWLEDGEMENT
+    Tracking: outstanding_frames < max_outstanding_frames
+    Suspended: 跳过背压\n立即唤醒编码线程
+```
 
 ```mermaid
 sequenceDiagram
