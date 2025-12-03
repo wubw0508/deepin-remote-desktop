@@ -56,7 +56,7 @@ drd_capture_manager_start(DrdCaptureManager *self, guint width, guint height, GE
 {
     g_return_val_if_fail(DRD_IS_CAPTURE_MANAGER(self), FALSE);
 
-    (void)error;
+    (void) error;
 
     if (self->running)
     {
@@ -109,9 +109,9 @@ drd_capture_manager_get_queue(DrdCaptureManager *self)
 
 gboolean
 drd_capture_manager_wait_frame(DrdCaptureManager *self,
-                                 gint64 timeout_us,
-                                 DrdFrame **out_frame,
-                                 GError **error)
+                               gint64 timeout_us,
+                               DrdFrame **out_frame,
+                               GError **error)
 {
     g_return_val_if_fail(DRD_IS_CAPTURE_MANAGER(self), FALSE);
     g_return_val_if_fail(out_frame != NULL, FALSE);

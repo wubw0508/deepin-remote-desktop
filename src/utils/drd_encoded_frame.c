@@ -52,12 +52,12 @@ drd_encoded_frame_new(void)
 
 void
 drd_encoded_frame_configure(DrdEncodedFrame *self,
-                             guint width,
-                             guint height,
-                             guint stride,
-                             gboolean is_bottom_up,
-                             guint64 timestamp,
-                             DrdFrameCodec codec)
+                            guint width,
+                            guint height,
+                            guint stride,
+                            gboolean is_bottom_up,
+                            guint64 timestamp,
+                            DrdFrameCodec codec)
 {
     g_return_if_fail(DRD_IS_ENCODED_FRAME(self));
 

@@ -17,7 +17,7 @@ G_DEFINE_TYPE(DrdRawEncoder, drd_raw_encoder, G_TYPE_OBJECT)
 static void
 drd_raw_encoder_class_init(DrdRawEncoderClass *klass)
 {
-    (void)klass;
+    (void) klass;
 }
 
 static void
@@ -67,9 +67,9 @@ drd_raw_encoder_reset(DrdRawEncoder *self)
 
 gboolean
 drd_raw_encoder_encode(DrdRawEncoder *self,
-                         DrdFrame *input,
-                         DrdEncodedFrame *output,
-                         GError **error)
+                       DrdFrame *input,
+                       DrdEncodedFrame *output,
+                       GError **error)
 {
     g_return_val_if_fail(DRD_IS_RAW_ENCODER(self), FALSE);
     g_return_val_if_fail(DRD_IS_FRAME(input), FALSE);
@@ -98,7 +98,7 @@ drd_raw_encoder_encode(DrdRawEncoder *self,
     }
 
     const guint32 expected_stride = self->width * 4u;
-    const gsize output_size = (gsize)expected_stride * (gsize)self->height;
+    const gsize output_size = (gsize) expected_stride * (gsize) self->height;
 
     guint8 *payload = drd_encoded_frame_ensure_capacity(output, output_size);
     if (payload == NULL)
@@ -115,18 +115,18 @@ drd_raw_encoder_encode(DrdRawEncoder *self,
 
     for (guint y = 0; y < self->height; y++)
     {
-        const guint8 *src_row = src + (gsize)stride_in * (self->height - 1 - y);
-        guint8 *dst_row = payload + (gsize)expected_stride * y;
+        const guint8 *src_row = src + (gsize) stride_in * (self->height - 1 - y);
+        guint8 *dst_row = payload + (gsize) expected_stride * y;
         memcpy(dst_row, src_row, expected_stride);
     }
 
     drd_encoded_frame_configure(output,
-                                 self->width,
-                                 self->height,
-                                 expected_stride,
-                                 TRUE,
-                                 drd_frame_get_timestamp(input),
-                                 DRD_FRAME_CODEC_RAW);
+                                self->width,
+                                self->height,
+                                expected_stride,
+                                TRUE,
+                                drd_frame_get_timestamp(input),
+                                DRD_FRAME_CODEC_RAW);
     drd_encoded_frame_set_quality(output, 100, 0, TRUE);
     return TRUE;
 }

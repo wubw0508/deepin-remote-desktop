@@ -59,26 +59,40 @@ struct _DrdRdpSession
 G_DEFINE_TYPE(DrdRdpSession, drd_rdp_session, G_TYPE_OBJECT)
 
 static gboolean drd_rdp_session_send_surface_bits(DrdRdpSession *self,
-                                                   DrdEncodedFrame *frame,
-                                                   guint32 frame_id,
-                                                   UINT32 negotiated_max_payload,
-                                                   GError **error);
+                                                  DrdEncodedFrame *frame,
+                                                  guint32 frame_id,
+                                                  UINT32 negotiated_max_payload,
+                                                  GError **error);
+
 static gpointer drd_rdp_session_vcm_thread(gpointer user_data);
+
 static gboolean drd_rdp_session_try_submit_graphics(DrdRdpSession *self,
                                                     DrdEncodedFrame *frame);
+
 static void drd_rdp_session_maybe_init_graphics(DrdRdpSession *self);
+
 static void drd_rdp_session_disable_graphics_pipeline(DrdRdpSession *self,
                                                       const gchar *reason);
+
 static gboolean drd_rdp_session_enforce_peer_desktop_size(DrdRdpSession *self);
+
 static gboolean drd_rdp_session_wait_for_graphics_capacity(DrdRdpSession *self,
-                                                          gint64 timeout_us);
+                                                           gint64 timeout_us);
+
 static gboolean drd_rdp_session_start_render_thread(DrdRdpSession *self);
+
 static void drd_rdp_session_stop_render_thread(DrdRdpSession *self);
+
 static gpointer drd_rdp_session_render_thread(gpointer user_data);
+
 static void drd_rdp_session_notify_closed(DrdRdpSession *self);
+
 gboolean drd_rdp_session_client_is_mstsc(DrdRdpSession *self);
+
 static WCHAR *drd_rdp_session_get_utf16_string(const char *str, size_t *size);
+
 static WCHAR *drd_rdp_session_generate_redirection_guid(size_t *size);
+
 static BYTE *drd_rdp_session_get_certificate_container(const char *certificate, size_t *size);
 
 static void
@@ -206,8 +220,8 @@ drd_rdp_session_set_virtual_channel_manager(DrdRdpSession *self, HANDLE vcm)
 
 void
 drd_rdp_session_set_closed_callback(DrdRdpSession *self,
-                                     DrdRdpSessionClosedFunc callback,
-                                     gpointer user_data)
+                                    DrdRdpSessionClosedFunc callback,
+                                    gpointer user_data)
 {
     g_return_if_fail(DRD_IS_RDP_SESSION(self));
 
@@ -291,14 +305,19 @@ drd_rdp_session_activate(DrdRdpSession *self)
     }
 
     gboolean started_stream = FALSE;
-    if (!stream_running) {
+    if (!stream_running)
+    {
         g_autoptr(GError) stream_error = NULL;
-        if (!drd_server_runtime_prepare_stream(self->runtime, &encoding_opts, &stream_error)) {
-            if (stream_error != NULL) {
+        if (!drd_server_runtime_prepare_stream(self->runtime, &encoding_opts, &stream_error))
+        {
+            if (stream_error != NULL)
+            {
                 DRD_LOG_WARNING("Session %s failed to prepare runtime stream: %s",
                                 self->peer_address,
                                 stream_error->message);
-            } else {
+            }
+            else
+            {
                 DRD_LOG_WARNING("Session %s failed to prepare runtime stream",
                                 self->peer_address);
             }
@@ -309,7 +328,8 @@ drd_rdp_session_activate(DrdRdpSession *self)
         started_stream = TRUE;
     }
 
-    if (started_stream) {
+    if (started_stream)
+    {
         drd_server_runtime_request_keyframe(self->runtime);
     }
 
@@ -375,7 +395,7 @@ drd_rdp_session_start_render_thread(DrdRdpSession *self)
 
     g_atomic_int_set(&self->render_running, 1);
     self->render_thread =
-        g_thread_new("drd-render-thread", drd_rdp_session_render_thread, g_object_ref(self));
+            g_thread_new("drd-render-thread", drd_rdp_session_render_thread, g_object_ref(self));
     if (self->render_thread == NULL)
     {
         g_atomic_int_set(&self->render_running, 0);
@@ -539,7 +559,7 @@ drd_rdp_session_get_certificate_container(const char *certificate,
 
     Stream_Write_UINT32(stream, ELEMENT_TYPE_CERTIFICATE);
     Stream_Write_UINT32(stream, ENCODING_TYPE_ASN1_DER);
-    const gint64 der_len_signed = (gint64)der_length;
+    const gint64 der_len_signed = (gint64) der_length;
     if (der_len_signed < 0 || der_len_signed > G_MAXUINT32)
     {
         Stream_Free(stream, TRUE);
@@ -639,7 +659,7 @@ drd_rdp_session_send_server_redirection(DrdRdpSession *self,
     redirection_flags |= LB_LOAD_BALANCE_INFO;
     redirection_set_byte_option(redirection,
                                 LB_LOAD_BALANCE_INFO,
-                                (const BYTE *)routing_token,
+                                (const BYTE *) routing_token,
                                 strlen(routing_token));
 
     redirection_flags |= LB_USERNAME;
@@ -657,7 +677,7 @@ drd_rdp_session_send_server_redirection(DrdRdpSession *self,
     {
         return FALSE;
     }
-    redirection_set_byte_option(redirection, LB_PASSWORD, (const BYTE *)utf16_password, size);
+    redirection_set_byte_option(redirection, LB_PASSWORD, (const BYTE *) utf16_password, size);
 
     redirection_flags |= LB_REDIRECTION_GUID;
     g_autofree WCHAR *encoded_guid = drd_rdp_session_generate_redirection_guid(&size);
@@ -665,11 +685,11 @@ drd_rdp_session_send_server_redirection(DrdRdpSession *self,
     {
         return FALSE;
     }
-    redirection_set_byte_option(redirection, LB_REDIRECTION_GUID, (const BYTE *)encoded_guid, size);
+    redirection_set_byte_option(redirection, LB_REDIRECTION_GUID, (const BYTE *) encoded_guid, size);
 
     redirection_flags |= LB_TARGET_CERTIFICATE;
     g_autofree BYTE *certificate_container =
-        drd_rdp_session_get_certificate_container(certificate, &size);
+            drd_rdp_session_get_certificate_container(certificate, &size);
     if (certificate_container == NULL)
     {
         return FALSE;
@@ -709,8 +729,8 @@ drd_rdp_session_disconnect(DrdRdpSession *self, const gchar *reason)
     drd_rdp_session_stop_event_thread(self);
     drd_rdp_session_disable_graphics_pipeline(self, NULL);
     g_clear_pointer(&self->local_session, drd_local_session_close);
-    g_atomic_int_set(&self->render_running,0);
-    g_atomic_int_set(&self->connection_alive,0);
+    g_atomic_int_set(&self->render_running, 0);
+    g_atomic_int_set(&self->connection_alive, 0);
     if (self->peer != NULL && self->peer->Disconnect != NULL)
     {
         self->peer->Disconnect(self->peer);
@@ -722,10 +742,10 @@ drd_rdp_session_disconnect(DrdRdpSession *self, const gchar *reason)
 
 static gboolean
 drd_rdp_session_send_surface_bits(DrdRdpSession *self,
-                                   DrdEncodedFrame *frame,
-                                   guint32 frame_id,
-                                   UINT32 negotiated_max_payload,
-                                   GError **error);
+                                  DrdEncodedFrame *frame,
+                                  guint32 frame_id,
+                                  UINT32 negotiated_max_payload,
+                                  GError **error);
 
 static gpointer
 drd_rdp_session_vcm_thread(gpointer user_data)
@@ -761,7 +781,7 @@ drd_rdp_session_vcm_thread(gpointer user_data)
         peer_events_handles = peer->GetEventHandles(peer, &events[n_events], G_N_ELEMENTS(events) - n_events);
         if (!peer_events_handles)
         {
-            g_message ("[RDP] peer_events_handles 0, stopping session");
+            g_message("[RDP] peer_events_handles 0, stopping session");
             g_atomic_int_set(&self->connection_alive, 0);
             break;
         }
@@ -777,9 +797,9 @@ drd_rdp_session_vcm_thread(gpointer user_data)
             break;
         }
 
-        if (!peer->CheckFileDescriptor (peer))
+        if (!peer->CheckFileDescriptor(peer))
         {
-            g_message ("[RDP] CheckFileDescriptor error, stopping session");
+            g_message("[RDP] CheckFileDescriptor error, stopping session");
             g_atomic_int_set(&self->connection_alive, 0);
             break;
         }
@@ -794,17 +814,17 @@ drd_rdp_session_vcm_thread(gpointer user_data)
             continue;
         }
 
-        switch ( WTSVirtualChannelManagerGetDrdynvcState(vcm))
+        switch (WTSVirtualChannelManagerGetDrdynvcState(vcm))
         {
-        case DRDYNVC_STATE_NONE:
-            SetEvent(channel_event);
-            break;
-        case DRDYNVC_STATE_READY:
-            if (self->graphics_pipeline && g_atomic_int_get(&self->connection_alive))
-            {
-                drd_rdp_graphics_pipeline_maybe_init(self->graphics_pipeline);
-            }
-            break;
+            case DRDYNVC_STATE_NONE:
+                SetEvent(channel_event);
+                break;
+            case DRDYNVC_STATE_READY:
+                if (self->graphics_pipeline && g_atomic_int_get(&self->connection_alive))
+                {
+                    drd_rdp_graphics_pipeline_maybe_init(self->graphics_pipeline);
+                }
+                break;
         }
         if (!g_atomic_int_get(&self->connection_alive))
         {
@@ -858,20 +878,20 @@ drd_rdp_session_enforce_peer_desktop_size(DrdRdpSession *self)
     const gboolean client_allows_resize = freerdp_settings_get_bool(settings, FreeRDP_DesktopResize);
 
     DRD_LOG_MESSAGE("Session %s peer geometry %ux%u, server requires %ux%u",
-              self->peer_address,
-              client_width,
-              client_height,
-              desired_width,
-              desired_height);
+                    self->peer_address,
+                    client_width,
+                    client_height,
+                    desired_width,
+                    desired_height);
 
     if (!client_allows_resize && (client_width != desired_width || client_height != desired_height))
     {
         DRD_LOG_WARNING("Session %s client did not advertise DesktopResize, cannot override %ux%u with %ux%u",
-                  self->peer_address,
-                  client_width,
-                  client_height,
-                  desired_width,
-                  desired_height);
+                        self->peer_address,
+                        client_width,
+                        client_height,
+                        desired_width,
+                        desired_height);
         return FALSE;
     }
 
@@ -882,8 +902,8 @@ drd_rdp_session_enforce_peer_desktop_size(DrdRdpSession *self)
         if (!freerdp_settings_set_uint32(settings, FreeRDP_DesktopWidth, desired_width))
         {
             DRD_LOG_WARNING("Session %s could not update DesktopWidth to %u",
-                      self->peer_address,
-                      desired_width);
+                            self->peer_address,
+                            desired_width);
             return FALSE;
         }
         updated = TRUE;
@@ -894,8 +914,8 @@ drd_rdp_session_enforce_peer_desktop_size(DrdRdpSession *self)
         if (!freerdp_settings_set_uint32(settings, FreeRDP_DesktopHeight, desired_height))
         {
             DRD_LOG_WARNING("Session %s could not update DesktopHeight to %u",
-                      self->peer_address,
-                      desired_height);
+                            self->peer_address,
+                            desired_height);
             return FALSE;
         }
         updated = TRUE;
@@ -920,9 +940,9 @@ drd_rdp_session_enforce_peer_desktop_size(DrdRdpSession *self)
     }
 
     DRD_LOG_MESSAGE("Session %s enforced desktop resolution to %ux%u",
-              self->peer_address,
-              desired_width,
-              desired_height);
+                    self->peer_address,
+                    desired_width,
+                    desired_height);
     return TRUE;
 }
 
@@ -961,9 +981,9 @@ drd_rdp_session_render_thread(gpointer user_data)
         DrdEncodedFrame *encoded = NULL;
         g_autoptr(GError) error = NULL;
         if (!drd_server_runtime_pull_encoded_frame(self->runtime,
-                                                    16 * 1000,
-                                                    &encoded,
-                                                    &error))
+                                                   16 * 1000,
+                                                   &encoded,
+                                                   &error))
         {
             if (error != NULL && error->domain == G_IO_ERROR && error->code == G_IO_ERROR_TIMED_OUT)
             {
@@ -990,16 +1010,16 @@ drd_rdp_session_render_thread(gpointer user_data)
                 self->peer->context->settings != NULL)
             {
                 negotiated_max_payload =
-                    freerdp_settings_get_uint32(self->peer->context->settings,
-                                                FreeRDP_MultifragMaxRequestSize);
+                        freerdp_settings_get_uint32(self->peer->context->settings,
+                                                    FreeRDP_MultifragMaxRequestSize);
             }
             DRD_LOG_MESSAGE("try to send surface bit");
             g_autoptr(GError) send_error = NULL;
             if (!drd_rdp_session_send_surface_bits(self,
-                                                    owned_frame,
-                                                    self->frame_sequence,
-                                                    negotiated_max_payload,
-                                                    &send_error))
+                                                   owned_frame,
+                                                   self->frame_sequence,
+                                                   negotiated_max_payload,
+                                                   &send_error))
             {
                 if (send_error != NULL)
                 {
@@ -1045,10 +1065,10 @@ drd_rdp_session_maybe_init_graphics(DrdRdpSession *self)
     }
 
     DrdRdpGraphicsPipeline *pipeline =
-        drd_rdp_graphics_pipeline_new(self->peer,
-                                      self->vcm,
-                                      (guint16)encoding_opts.width,
-                                      (guint16)encoding_opts.height);
+            drd_rdp_graphics_pipeline_new(self->peer,
+                                          self->vcm,
+                                          (guint16) encoding_opts.width,
+                                          (guint16) encoding_opts.height);
     if (pipeline == NULL)
     {
         DRD_LOG_WARNING("Session %s failed to allocate graphics pipeline", self->peer_address);
@@ -1184,10 +1204,10 @@ drd_rdp_session_try_submit_graphics(DrdRdpSession *self, DrdEncodedFrame *frame)
 
 static gboolean
 drd_rdp_session_send_surface_bits(DrdRdpSession *self,
-                                   DrdEncodedFrame *frame,
-                                   guint32 frame_id,
-                                   UINT32 negotiated_max_payload,
-                                   GError **error)
+                                  DrdEncodedFrame *frame,
+                                  guint32 frame_id,
+                                  UINT32 negotiated_max_payload,
+                                  GError **error)
 {
     g_return_val_if_fail(DRD_IS_RDP_SESSION(self), FALSE);
     g_return_val_if_fail(DRD_IS_ENCODED_FRAME(frame), FALSE);
@@ -1246,7 +1266,7 @@ drd_rdp_session_send_surface_bits(DrdRdpSession *self,
     const gboolean bottom_up = drd_encoded_frame_get_is_bottom_up(frame);
     DrdFrameCodec codec = drd_encoded_frame_get_codec(frame);
 
-    gsize payload_limit = (gsize)negotiated_max_payload;
+    gsize payload_limit = (gsize) negotiated_max_payload;
     if (payload_limit > 0 && payload_limit < stride)
     {
         payload_limit = stride;
@@ -1292,10 +1312,10 @@ drd_rdp_session_send_surface_bits(DrdRdpSession *self,
         cmd.bmp.codecID = RDP_CODEC_ID_REMOTEFX;
         cmd.bmp.bpp = 32;
         cmd.bmp.flags = 0;
-        cmd.bmp.width = (UINT16)width;
-        cmd.bmp.height = (UINT16)height;
-        cmd.bmp.bitmapData = (BYTE *)data;
-        cmd.bmp.bitmapDataLength = (UINT32)data_size;
+        cmd.bmp.width = (UINT16) width;
+        cmd.bmp.height = (UINT16) height;
+        cmd.bmp.bitmapData = (BYTE *) data;
+        cmd.bmp.bitmapDataLength = (UINT32) data_size;
 
         success = update->SurfaceBits(context, &cmd);
     }
@@ -1303,7 +1323,7 @@ drd_rdp_session_send_surface_bits(DrdRdpSession *self,
     {
         /* 对 raw 帧执行按行分片，避免超出通道带宽的巨块推送。 */
         const gsize chunk_budget = (payload_limit > 0) ? payload_limit : (512 * 1024);
-        guint rows_per_chunk = (guint)MAX((gsize)1, chunk_budget / stride);
+        guint rows_per_chunk = (guint) MAX((gsize)1, chunk_budget / stride);
         if (rows_per_chunk == 0)
         {
             rows_per_chunk = 1;
@@ -1313,8 +1333,9 @@ drd_rdp_session_send_surface_bits(DrdRdpSession *self,
         for (guint top = 0; top < height; top += rows_per_chunk)
         {
             guint chunk_height = MIN(rows_per_chunk, height - top);
-            gsize offset = bottom_up ? (gsize)stride * (height - top - chunk_height)
-                                     : (gsize)stride * top;
+            gsize offset = bottom_up
+                               ? (gsize) stride * (height - top - chunk_height)
+                               : (gsize) stride * top;
 
             SURFACE_BITS_COMMAND cmd;
             memset(&cmd, 0, sizeof(cmd));
@@ -1325,13 +1346,13 @@ drd_rdp_session_send_surface_bits(DrdRdpSession *self,
             cmd.destBottom = top + chunk_height;
             cmd.skipCompression = TRUE;
 
-            cmd.bmp.bitmapData = (BYTE *)(data + offset);
-            cmd.bmp.bitmapDataLength = (UINT32)(stride * chunk_height);
+            cmd.bmp.bitmapData = (BYTE *) (data + offset);
+            cmd.bmp.bitmapDataLength = (UINT32) (stride * chunk_height);
             cmd.bmp.bpp = 32;
             cmd.bmp.flags = 0;
             cmd.bmp.codecID = 0;
-            cmd.bmp.width = (UINT16)width;
-            cmd.bmp.height = (UINT16)chunk_height;
+            cmd.bmp.width = (UINT16) width;
+            cmd.bmp.height = (UINT16) chunk_height;
 
             if (!update->SurfaceBits(context, &cmd))
             {

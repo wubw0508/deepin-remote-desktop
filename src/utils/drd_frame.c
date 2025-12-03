@@ -44,10 +44,10 @@ drd_frame_new(void)
 
 void
 drd_frame_configure(DrdFrame *self,
-                     guint width,
-                     guint height,
-                     guint stride,
-                     guint64 timestamp)
+                    guint width,
+                    guint height,
+                    guint stride,
+                    guint64 timestamp)
 {
     g_return_if_fail(DRD_IS_FRAME(self));
 

@@ -86,16 +86,16 @@ drd_application_log_effective_config(DrdApplication *self)
     }
 
     DRD_LOG_MESSAGE("Effective capture geometry %ux%u, encoder=%s, frame diff %s",
-              encoding_opts->width,
-              encoding_opts->height,
-              drd_application_mode_to_string(encoding_opts->mode),
-              encoding_opts->enable_frame_diff ? "enabled" : "disabled");
+                    encoding_opts->width,
+                    encoding_opts->height,
+                    drd_application_mode_to_string(encoding_opts->mode),
+                    encoding_opts->enable_frame_diff ? "enabled" : "disabled");
 
     const DrdRuntimeMode runtime_mode = drd_config_get_runtime_mode(self->config);
     DRD_LOG_MESSAGE("Effective NLA %s, runtime=%s, PAM service=%s",
-              drd_config_is_nla_enabled(self->config) ? "enabled" : "disabled",
-              drd_application_runtime_mode_to_string(runtime_mode),
-              drd_config_get_pam_service(self->config));
+                    drd_config_is_nla_enabled(self->config) ? "enabled" : "disabled",
+                    drd_application_runtime_mode_to_string(runtime_mode),
+                    drd_config_get_pam_service(self->config));
 }
 
 /* 释放主循环、监听器等运行期资源，确保干净退出。 */
@@ -165,12 +165,13 @@ drd_application_on_signal(gpointer user_data)
     uid_t uid = getuid();
     if (self->loop != NULL && g_main_loop_is_running(self->loop))
     {
-        if (uid == 0) {
+        if (uid == 0)
+        {
             g_main_loop_quit(self->loop);
             return G_SOURCE_CONTINUE;
         }
         DRD_LOG_MESSAGE("Termination signal received, shutting down main loop");
-        g_timeout_add(5*1000,quit_loop,self->loop);
+        g_timeout_add(5 * 1000, quit_loop, self->loop);
     }
 
     return G_SOURCE_CONTINUE;
@@ -214,9 +215,9 @@ drd_application_prepare_runtime(DrdApplication *self,
     if (nla_enabled && runtime_mode != DRD_RUNTIME_MODE_HANDOVER && (nla_username == NULL || nla_password == NULL))
     {
         g_set_error_literal(error,
-                    G_IO_ERROR,
-                    G_IO_ERROR_INVALID_ARGUMENT,
-                    "NLA username/password missing after config merge");
+                            G_IO_ERROR,
+                            G_IO_ERROR_INVALID_ARGUMENT,
+                            "NLA username/password missing after config merge");
         return FALSE;
     }
 
@@ -266,8 +267,8 @@ drd_application_prepare_runtime(DrdApplication *self,
     drd_server_runtime_set_encoding_options(self->runtime, encoding_opts);
 
     DRD_LOG_MESSAGE("Runtime initialized without capture/encoding setup "
-                        "(runtime mode=%s, awaiting session activation)",
-                        drd_application_runtime_mode_to_string(runtime_mode));
+                    "(runtime mode=%s, awaiting session activation)",
+                    drd_application_runtime_mode_to_string(runtime_mode));
 
 
     if (snapshot != NULL)
@@ -336,8 +337,8 @@ drd_application_start_system_daemon(DrdApplication *self, GError **error)
 
     g_clear_object(&self->mode_controller);
     self->mode_controller = G_OBJECT(drd_system_daemon_new(self->config,
-                                                           self->runtime,
-                                                           self->tls_credentials));
+        self->runtime,
+        self->tls_credentials));
     if (self->mode_controller == NULL)
     {
         g_set_error_literal(error,
@@ -378,8 +379,8 @@ drd_application_start_handover_daemon(DrdApplication *self, GError **error)
 
     g_clear_object(&self->mode_controller);
     self->mode_controller = G_OBJECT(drd_handover_daemon_new(self->config,
-                                                             self->runtime,
-                                                             self->tls_credentials));
+        self->runtime,
+        self->tls_credentials));
     if (self->mode_controller == NULL)
     {
         g_set_error_literal(error,
@@ -441,10 +442,34 @@ drd_application_parse_options(DrdApplication *self, gint *argc, gchar ***argv, G
         {"nla-username", 0, 0, G_OPTION_ARG_STRING, &nla_username, "NLA username for static mode", "USER"},
         {"nla-password", 0, 0, G_OPTION_ARG_STRING, &nla_password, "NLA password for static mode", "PASS"},
         {"enable-nla", 0, 0, G_OPTION_ARG_NONE, &enable_nla_flag, "Force enable NLA regardless of config", NULL},
-        {"disable-nla", 0, 0, G_OPTION_ARG_NONE, &disable_nla_flag, "Disable NLA and use TLS+PAM single sign-on (system mode only)", NULL},
+        {
+            "disable-nla",
+            0,
+            0,
+            G_OPTION_ARG_NONE,
+            &disable_nla_flag,
+            "Disable NLA and use TLS+PAM single sign-on (system mode only)",
+            NULL
+        },
         {"mode", 0, 0, G_OPTION_ARG_STRING, &runtime_mode_name, "Runtime mode (user|system|handover)", "MODE"},
-        {"enable-diff", 0, 0, G_OPTION_ARG_NONE, &enable_diff_flag, "Enable frame difference even if disabled in config", NULL},
-        {"disable-diff", 0, 0, G_OPTION_ARG_NONE, &disable_diff_flag, "Disable frame difference regardless of config", NULL},
+        {
+            "enable-diff",
+            0,
+            0,
+            G_OPTION_ARG_NONE,
+            &enable_diff_flag,
+            "Enable frame difference even if disabled in config",
+            NULL
+        },
+        {
+            "disable-diff",
+            0,
+            0,
+            G_OPTION_ARG_NONE,
+            &disable_diff_flag,
+            "Disable frame difference regardless of config",
+            NULL
+        },
         {NULL}
     };
 
@@ -531,20 +556,20 @@ drd_application_parse_options(DrdApplication *self, gint *argc, gchar ***argv, G
     }
 
     if (!drd_config_merge_cli(self->config,
-                               bind_address,
-                               port,
-                               cert_path,
-                               key_path,
-                               nla_username,
-                               nla_password,
-                               enable_nla_flag,
-                               disable_nla_flag,
-                               runtime_mode_name,
-                               capture_width,
-                               capture_height,
-                               encoder_mode,
-                               diff_override,
-                               error))
+                              bind_address,
+                              port,
+                              cert_path,
+                              key_path,
+                              nla_username,
+                              nla_password,
+                              enable_nla_flag,
+                              disable_nla_flag,
+                              runtime_mode_name,
+                              capture_width,
+                              capture_height,
+                              encoder_mode,
+                              diff_override,
+                              error))
     {
         g_clear_pointer(&bind_address, g_free);
         g_clear_pointer(&cert_path, g_free);

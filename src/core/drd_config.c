@@ -26,12 +26,16 @@ struct _DrdConfig
 G_DEFINE_TYPE(DrdConfig, drd_config, G_TYPE_OBJECT)
 
 static gboolean drd_config_parse_bool(const gchar *value, gboolean *out_value, GError **error);
+
 static gboolean drd_config_set_mode_from_string(DrdConfig *self, const gchar *value, GError **error);
+
 static gboolean drd_config_parse_runtime_mode(const gchar *value,
                                               DrdRuntimeMode *out_mode,
                                               GError **error);
+
 static void drd_config_set_runtime_mode_internal(DrdConfig *self, DrdRuntimeMode mode);
-static void drd_config_refresh_pam_service(DrdConfig *self);
+
+static void drd_config_refresh_pam_service(DrdConfig * self);
 
 /* 释放配置对象中持有的动态字符串。 */
 static void
@@ -264,7 +268,7 @@ drd_config_load_from_key_file(DrdConfig *self, GKeyFile *keyfile, GError **error
                         "Invalid port value %" G_GINT64_FORMAT " in configuration", port);
             return FALSE;
         }
-        self->port = (guint16)port;
+        self->port = (guint16) port;
     }
 
     g_clear_pointer(&self->certificate_path, g_free);
@@ -291,7 +295,7 @@ drd_config_load_from_key_file(DrdConfig *self, GKeyFile *keyfile, GError **error
         gint64 width = g_key_file_get_integer(keyfile, "capture", "width", NULL);
         if (width > 0)
         {
-            self->encoding.width = (guint)width;
+            self->encoding.width = (guint) width;
         }
     }
 
@@ -300,7 +304,7 @@ drd_config_load_from_key_file(DrdConfig *self, GKeyFile *keyfile, GError **error
         gint64 height = g_key_file_get_integer(keyfile, "capture", "height", NULL);
         if (height > 0)
         {
-            self->encoding.height = (guint)height;
+            self->encoding.height = (guint) height;
         }
     }
 
@@ -385,7 +389,7 @@ drd_config_load_from_key_file(DrdConfig *self, GKeyFile *keyfile, GError **error
     if (g_key_file_has_key(keyfile, "service", "runtime_mode", NULL))
     {
         g_autofree gchar *runtime_mode =
-            g_key_file_get_string(keyfile, "service", "runtime_mode", NULL);
+                g_key_file_get_string(keyfile, "service", "runtime_mode", NULL);
         DrdRuntimeMode parsed_mode = DRD_RUNTIME_MODE_USER;
         if (!drd_config_parse_runtime_mode(runtime_mode, &parsed_mode, error))
         {
@@ -402,8 +406,9 @@ drd_config_load_from_key_file(DrdConfig *self, GKeyFile *keyfile, GError **error
             return FALSE;
         }
         drd_config_set_runtime_mode_internal(self,
-                                             system_mode ? DRD_RUNTIME_MODE_SYSTEM
-                                                         : DRD_RUNTIME_MODE_USER);
+                                             system_mode
+                                                 ? DRD_RUNTIME_MODE_SYSTEM
+                                                 : DRD_RUNTIME_MODE_USER);
     }
 
     if (!nla_auth_override && g_key_file_has_key(keyfile, "service", "rdp_sso", NULL))
@@ -426,7 +431,8 @@ drd_config_new_from_file(const gchar *path, GError **error)
 {
     g_return_val_if_fail(path != NULL, NULL);
 
-    g_autoptr(GKeyFile) keyfile = g_key_file_new();
+    g_autoptr(GKeyFile)
+    keyfile = g_key_file_new();
     if (!g_key_file_load_from_file(keyfile, path, G_KEY_FILE_NONE, error))
     {
         return NULL;
@@ -483,20 +489,20 @@ drd_config_set_path(DrdConfig *self, gchar **target, const gchar *value)
 /* 合并 CLI 选项，优先级高于配置文件。 */
 gboolean
 drd_config_merge_cli(DrdConfig *self,
-                      const gchar *bind_address,
-                      gint port,
-                      const gchar *cert_path,
-                      const gchar *key_path,
-                      const gchar *nla_username,
-                      const gchar *nla_password,
-                      gboolean cli_enable_nla,
-                      gboolean cli_disable_nla,
-                      const gchar *runtime_mode_name,
-                      gint width,
-                      gint height,
-                      const gchar *encoder_mode,
-                      gint diff_override,
-                      GError **error)
+                     const gchar *bind_address,
+                     gint port,
+                     const gchar *cert_path,
+                     const gchar *key_path,
+                     const gchar *nla_username,
+                     const gchar *nla_password,
+                     gboolean cli_enable_nla,
+                     gboolean cli_disable_nla,
+                     const gchar *runtime_mode_name,
+                     gint width,
+                     gint height,
+                     const gchar *encoder_mode,
+                     gint diff_override,
+                     GError **error)
 {
     g_return_val_if_fail(DRD_IS_CONFIG(self), FALSE);
 
@@ -515,7 +521,7 @@ drd_config_merge_cli(DrdConfig *self,
                         "Port %d exceeds maximum %u", port, G_MAXUINT16);
             return FALSE;
         }
-        self->port = (guint16)port;
+        self->port = (guint16) port;
     }
 
     if (cert_path != NULL)
@@ -570,12 +576,12 @@ drd_config_merge_cli(DrdConfig *self,
 
     if (width > 0)
     {
-        self->encoding.width = (guint)width;
+        self->encoding.width = (guint) width;
     }
 
     if (height > 0)
     {
-        self->encoding.height = (guint)height;
+        self->encoding.height = (guint) height;
     }
 
     if (encoder_mode != NULL)

@@ -86,8 +86,8 @@ drd_server_runtime_get_input(DrdServerRuntime *self)
 
 gboolean
 drd_server_runtime_prepare_stream(DrdServerRuntime *self,
-                                   const DrdEncodingOptions *encoding_options,
-                                   GError **error)
+                                  const DrdEncodingOptions *encoding_options,
+                                  GError **error)
 {
     g_return_val_if_fail(DRD_IS_SERVER_RUNTIME(self), FALSE);
     g_return_val_if_fail(encoding_options != NULL, FALSE);
@@ -107,18 +107,18 @@ drd_server_runtime_prepare_stream(DrdServerRuntime *self,
     }
 
     if (!drd_input_dispatcher_start(self->input,
-                                     encoding_options->width,
-                                     encoding_options->height,
-                                     error))
+                                    encoding_options->width,
+                                    encoding_options->height,
+                                    error))
     {
         drd_encoding_manager_reset(self->encoder);
         return FALSE;
     }
 
     if (!drd_capture_manager_start(self->capture,
-                                    encoding_options->width,
-                                    encoding_options->height,
-                                    error))
+                                   encoding_options->width,
+                                   encoding_options->height,
+                                   error))
     {
         drd_input_dispatcher_stop(self->input);
         drd_encoding_manager_reset(self->encoder);
@@ -127,8 +127,8 @@ drd_server_runtime_prepare_stream(DrdServerRuntime *self,
 
     self->stream_running = TRUE;
     DRD_LOG_MESSAGE("Server runtime prepared stream with geometry %ux%u",
-              encoding_options->width,
-              encoding_options->height);
+                    encoding_options->width,
+                    encoding_options->height);
     return TRUE;
 }
 
@@ -152,9 +152,9 @@ drd_server_runtime_stop(DrdServerRuntime *self)
 
 gboolean
 drd_server_runtime_pull_encoded_frame(DrdServerRuntime *self,
-                                       gint64 timeout_us,
-                                       DrdEncodedFrame **out_frame,
-                                       GError **error)
+                                      gint64 timeout_us,
+                                      DrdEncodedFrame **out_frame,
+                                      GError **error)
 {
     g_return_val_if_fail(DRD_IS_SERVER_RUNTIME(self), FALSE);
     g_return_val_if_fail(out_frame != NULL, FALSE);
@@ -168,11 +168,11 @@ drd_server_runtime_pull_encoded_frame(DrdServerRuntime *self,
 
     DrdFrameCodec codec = drd_server_runtime_resolve_codec(self);
     return drd_encoding_manager_encode(self->encoder,
-                                        frame,
-                                        0,
-                                        codec,
-                                        out_frame,
-                                        error);
+                                       frame,
+                                       0,
+                                       codec,
+                                       out_frame,
+                                       error);
 }
 
 void
@@ -182,7 +182,7 @@ drd_server_runtime_set_transport(DrdServerRuntime *self, DrdFrameTransport trans
 
     g_mutex_lock(&self->transport_mutex);
     DrdFrameTransport current =
-        (DrdFrameTransport)g_atomic_int_get(&self->transport_mode);
+            (DrdFrameTransport) g_atomic_int_get(&self->transport_mode);
     if (current == transport)
     {
         g_mutex_unlock(&self->transport_mutex);
@@ -198,7 +198,7 @@ DrdFrameTransport
 drd_server_runtime_get_transport(DrdServerRuntime *self)
 {
     g_return_val_if_fail(DRD_IS_SERVER_RUNTIME(self), DRD_FRAME_TRANSPORT_SURFACE_BITS);
-    return (DrdFrameTransport)g_atomic_int_get(&self->transport_mode);
+    return (DrdFrameTransport) g_atomic_int_get(&self->transport_mode);
 }
 
 DrdFrameCodec
@@ -210,7 +210,7 @@ drd_server_runtime_get_codec(DrdServerRuntime *self)
 
 gboolean
 drd_server_runtime_get_encoding_options(DrdServerRuntime *self,
-                                         DrdEncodingOptions *out_options)
+                                        DrdEncodingOptions *out_options)
 {
     g_return_val_if_fail(DRD_IS_SERVER_RUNTIME(self), FALSE);
     g_return_val_if_fail(out_options != NULL, FALSE);
@@ -233,10 +233,10 @@ drd_server_runtime_set_encoding_options(DrdServerRuntime *self,
 
     const gboolean had_options = self->has_encoding_options;
     const gboolean geometry_changed =
-        had_options && (self->encoding_options.width != encoding_options->width ||
-                        self->encoding_options.height != encoding_options->height ||
-                        self->encoding_options.mode != encoding_options->mode ||
-                        self->encoding_options.enable_frame_diff != encoding_options->enable_frame_diff);
+            had_options && (self->encoding_options.width != encoding_options->width ||
+                            self->encoding_options.height != encoding_options->height ||
+                            self->encoding_options.mode != encoding_options->mode ||
+                            self->encoding_options.enable_frame_diff != encoding_options->enable_frame_diff);
 
     self->encoding_options = *encoding_options;
     self->has_encoding_options = TRUE;
@@ -294,7 +294,7 @@ drd_server_runtime_resolve_codec(DrdServerRuntime *self)
     }
 
     DrdFrameTransport transport =
-        (DrdFrameTransport)g_atomic_int_get(&self->transport_mode);
+            (DrdFrameTransport) g_atomic_int_get(&self->transport_mode);
 
     if (transport == DRD_FRAME_TRANSPORT_GRAPHICS_PIPELINE)
     {

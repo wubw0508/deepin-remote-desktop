@@ -10,30 +10,36 @@
 #include "session/drd_rdp_session.h"
 #include "utils/drd_log.h"
 
-static gboolean drd_handover_daemon_bind_handover(DrdHandoverDaemon *self, GError **error);
-static gboolean drd_handover_daemon_start_session(DrdHandoverDaemon *self, GError **error);
-static gboolean drd_handover_daemon_take_client(DrdHandoverDaemon *self, GError **error);
+static gboolean drd_handover_daemon_bind_handover(DrdHandoverDaemon * self, GError * *error);
+static gboolean drd_handover_daemon_start_session(DrdHandoverDaemon * self, GError * *error);
+static gboolean drd_handover_daemon_take_client(DrdHandoverDaemon * self, GError * *error);
+
 static void drd_handover_daemon_on_redirect_client(DrdDBusRemoteDesktopRdpHandover *interface,
                                                    const gchar *routing_token,
                                                    const gchar *username,
                                                    const gchar *password,
                                                    gpointer user_data);
+
 static void drd_handover_daemon_on_take_client_ready(DrdDBusRemoteDesktopRdpHandover *interface,
                                                      gboolean use_system_credentials,
                                                      gpointer user_data);
+
 static void drd_handover_daemon_on_restart_handover(DrdDBusRemoteDesktopRdpHandover *interface,
                                                     gpointer user_data);
+
 static void drd_handover_daemon_on_session_ready(DrdRdpListener *listener,
                                                  DrdRdpSession *session,
                                                  GSocketConnection *connection,
                                                  gpointer user_data);
+
 static gboolean drd_handover_daemon_redirect_active_client(DrdHandoverDaemon *self,
                                                            const gchar *routing_token,
                                                            const gchar *username,
                                                            const gchar *password);
-static void drd_handover_daemon_request_shutdown(DrdHandoverDaemon *self);
-static gboolean drd_handover_daemon_refresh_nla_credentials(DrdHandoverDaemon *self, GError **error);
-static void drd_handover_daemon_clear_nla_credentials(DrdHandoverDaemon *self);
+
+static void drd_handover_daemon_request_shutdown(DrdHandoverDaemon * self);
+static gboolean drd_handover_daemon_refresh_nla_credentials(DrdHandoverDaemon * self, GError * *error);
+static void drd_handover_daemon_clear_nla_credentials(DrdHandoverDaemon * self);
 
 struct _DrdHandoverDaemon
 {
@@ -124,11 +130,12 @@ drd_handover_daemon_generate_token(const gchar *prefix, gsize random_bytes)
 
     for (gsize i = 0; i < random_bytes; i++)
     {
-        bytes[i] = (guint8)g_random_int_range(0, 256);
+        bytes[i] = (guint8) g_random_int_range(0, 256);
     }
 
-    g_autoptr(GString) token = g_string_sized_new((prefix != NULL ? strlen(prefix) : 0) +
-                                                  random_bytes * 2);
+    g_autoptr(GString)
+    token = g_string_sized_new((prefix != NULL ? strlen(prefix) : 0) +
+                               random_bytes * 2);
     if (token == NULL)
     {
         return NULL;
@@ -186,23 +193,23 @@ drd_handover_daemon_bind_handover(DrdHandoverDaemon *self, GError **error)
 {
     gchar *object_path = NULL;
     if (!drd_dbus_remote_desktop_rdp_dispatcher_call_request_handover_sync(
-            self->dispatcher_proxy,
-            &object_path,
-            NULL,
-            error))
+        self->dispatcher_proxy,
+        &object_path,
+        NULL,
+        error))
     {
         return FALSE;
     }
 
     self->handover_object_path = object_path;
     self->handover_proxy =
-        drd_dbus_remote_desktop_rdp_handover_proxy_new_for_bus_sync(
-            G_BUS_TYPE_SYSTEM,
-            G_DBUS_PROXY_FLAGS_NONE,
-            DRD_REMOTE_DESKTOP_BUS_NAME,
-            object_path,
-            NULL,
-            error);
+            drd_dbus_remote_desktop_rdp_handover_proxy_new_for_bus_sync(
+                G_BUS_TYPE_SYSTEM,
+                G_DBUS_PROXY_FLAGS_NONE,
+                DRD_REMOTE_DESKTOP_BUS_NAME,
+                object_path,
+                NULL,
+                error);
     if (self->handover_proxy == NULL)
     {
         return FALSE;
@@ -216,7 +223,7 @@ drd_handover_daemon_bind_handover(DrdHandoverDaemon *self, GError **error)
                      "take-client-ready",
                      G_CALLBACK(drd_handover_daemon_on_take_client_ready),
                      self);
-    g_signal_connect(self->handover_proxy,// 什么时候发这个信号？// TODO
+    g_signal_connect(self->handover_proxy, // 什么时候发这个信号？// TODO
                      "restart-handover",
                      G_CALLBACK(drd_handover_daemon_on_restart_handover),
                      self);
@@ -277,8 +284,10 @@ drd_handover_daemon_start_session(DrdHandoverDaemon *self, GError **error)
 static gboolean
 drd_handover_daemon_take_client(DrdHandoverDaemon *self, GError **error)
 {
-    g_autoptr(GVariant) fd_variant = NULL;
-    g_autoptr(GUnixFDList) fd_list = NULL;
+    g_autoptr(GVariant)
+    fd_variant = NULL;
+    g_autoptr(GUnixFDList)
+    fd_list = NULL;
     if (!drd_dbus_remote_desktop_rdp_handover_call_take_client_sync(self->handover_proxy,
                                                                     NULL,
                                                                     &fd_variant,
@@ -296,14 +305,16 @@ drd_handover_daemon_take_client(DrdHandoverDaemon *self, GError **error)
         return FALSE;
     }
 
-    g_autoptr(GSocket) socket = g_socket_new_from_fd(fd, error);
+    g_autoptr(GSocket)
+    socket = g_socket_new_from_fd(fd, error);
     if (!G_IS_SOCKET(socket))
     {
         return FALSE;
     }
 
-    g_autoptr(GSocketConnection) connection =
-        g_socket_connection_factory_create_connection(socket);
+    g_autoptr(GSocketConnection)
+    connection =
+            g_socket_connection_factory_create_connection(socket);
     if (!drd_rdp_listener_adopt_connection(self->listener,
                                            g_steal_pointer(&connection),
                                            error))
@@ -322,7 +333,7 @@ drd_handover_daemon_on_redirect_client(DrdDBusRemoteDesktopRdpHandover *interfac
                                        const gchar *password,
                                        gpointer user_data)
 {
-    (void)interface;
+    (void) interface;
     DrdHandoverDaemon *self = user_data;
     DRD_LOG_MESSAGE("RedirectClient received (token=%s) for %s",
                     routing_token != NULL ? routing_token : "unknown",
@@ -343,11 +354,12 @@ drd_handover_daemon_on_take_client_ready(DrdDBusRemoteDesktopRdpHandover *interf
                                          gboolean use_system_credentials,
                                          gpointer user_data)
 {
-    (void)interface;
-    (void)use_system_credentials;
+    (void) interface;
+    (void) use_system_credentials;
     DrdHandoverDaemon *self = user_data;
 
-    g_autoptr(GError) error = NULL;
+    g_autoptr(GError)
+    error = NULL;
     if (!drd_handover_daemon_take_client(self, &error) && error != NULL)
     {
         DRD_LOG_WARNING("Failed to take client: %s", error->message);
@@ -358,7 +370,7 @@ static void
 drd_handover_daemon_on_restart_handover(DrdDBusRemoteDesktopRdpHandover *interface,
                                         gpointer user_data)
 {
-    (void)interface;
+    (void) interface;
     DrdHandoverDaemon *self = user_data;
     DRD_LOG_MESSAGE("RestartHandover received for %s", self->handover_object_path);
 }
@@ -369,8 +381,8 @@ drd_handover_daemon_on_session_ready(DrdRdpListener *listener,
                                      GSocketConnection *connection,
                                      gpointer user_data)
 {
-    (void)listener;
-    (void)connection;
+    (void) listener;
+    (void) connection;
     DrdHandoverDaemon *self = DRD_HANDOVER_DAEMON(user_data);
     if (!DRD_IS_HANDOVER_DAEMON(self))
     {
@@ -408,7 +420,8 @@ drd_handover_daemon_redirect_active_client(DrdHandoverDaemon *self,
     }
 
     g_autofree gchar *certificate = NULL;
-    g_autoptr(GError) tls_error = NULL;
+    g_autoptr(GError)
+    tls_error = NULL;
     if (!drd_tls_credentials_read_material(self->tls_credentials, &certificate, NULL, &tls_error))
     {
         if (tls_error != NULL)
@@ -486,13 +499,13 @@ drd_handover_daemon_start(DrdHandoverDaemon *self, GError **error)
     if (self->dispatcher_proxy == NULL)
     {
         self->dispatcher_proxy =
-            drd_dbus_remote_desktop_rdp_dispatcher_proxy_new_for_bus_sync(
-                G_BUS_TYPE_SYSTEM,
-                G_DBUS_PROXY_FLAGS_NONE,
-                DRD_REMOTE_DESKTOP_BUS_NAME,
-                DRD_REMOTE_DESKTOP_DISPATCHER_OBJECT_PATH,
-                NULL,
-                error);
+                drd_dbus_remote_desktop_rdp_dispatcher_proxy_new_for_bus_sync(
+                    G_BUS_TYPE_SYSTEM,
+                    G_DBUS_PROXY_FLAGS_NONE,
+                    DRD_REMOTE_DESKTOP_BUS_NAME,
+                    DRD_REMOTE_DESKTOP_DISPATCHER_OBJECT_PATH,
+                    NULL,
+                    error);
         if (self->dispatcher_proxy == NULL)
         {
             return FALSE;
@@ -520,15 +533,15 @@ drd_handover_daemon_start(DrdHandoverDaemon *self, GError **error)
         }
 
         self->listener =
-            drd_rdp_listener_new(drd_config_get_bind_address(self->config),
-                                 drd_config_get_port(self->config),
-                                 self->runtime,
-                                 encoding_opts,
-                                 drd_config_is_nla_enabled(self->config),
-                                 self->nla_username,
-                                 self->nla_password,
-                                 drd_config_get_pam_service(self->config),
-                                 FALSE);
+                drd_rdp_listener_new(drd_config_get_bind_address(self->config),
+                                     drd_config_get_port(self->config),
+                                     self->runtime,
+                                     encoding_opts,
+                                     drd_config_is_nla_enabled(self->config),
+                                     self->nla_username,
+                                     self->nla_password,
+                                     drd_config_get_pam_service(self->config),
+                                     FALSE);
         if (self->listener == NULL)
         {
             g_set_error_literal(error,
@@ -554,6 +567,6 @@ drd_handover_daemon_start(DrdHandoverDaemon *self, GError **error)
     }
 
     DRD_LOG_MESSAGE("Handover daemon connected to dispatcher %s",
-              DRD_REMOTE_DESKTOP_DISPATCHER_OBJECT_PATH);
+                    DRD_REMOTE_DESKTOP_DISPATCHER_OBJECT_PATH);
     return TRUE;
 }

@@ -63,7 +63,7 @@ hash_tile(const guint8 *data,
 
     for (guint row = 0; row < height; ++row)
     {
-        const guint8 *ptr = data + ((gsize)(y + row) * stride) + (gsize)x * 4;
+        const guint8 *ptr = data + ((gsize)(y + row) * stride) + (gsize) x * 4;
         guint32 remaining = bytes_per_row;
 
         while (remaining >= 16)
@@ -90,7 +90,7 @@ hash_tile(const guint8 *data,
         {
             guint64 tail = 0;
             memcpy(&tail, ptr, remaining);
-            tail ^= ((guint64)remaining << 56);
+            tail ^= ((guint64) remaining << 56);
             hash = drd_mix_chunk(hash, tail);
         }
     }
@@ -146,10 +146,10 @@ drd_rfx_encoder_new(void)
 
 gboolean
 drd_rfx_encoder_configure(DrdRfxEncoder *self,
-                           guint width,
-                           guint height,
-                           gboolean enable_diff,
-                           GError **error)
+                          guint width,
+                          guint height,
+                          gboolean enable_diff,
+                          GError **error)
 {
     g_return_val_if_fail(DRD_IS_RFX_ENCODER(self), FALSE);
 
@@ -203,10 +203,10 @@ drd_rfx_encoder_configure(DrdRfxEncoder *self,
     self->force_keyframe = TRUE;
     self->progressive_header_sent = FALSE;
 
-    g_byte_array_set_size(self->bottom_up_frame, (gsize)width * height * 4u);
+    g_byte_array_set_size(self->bottom_up_frame, (gsize) width * height * 4u);
     memset(self->bottom_up_frame->data, 0, self->bottom_up_frame->len);
 
-    g_byte_array_set_size(self->previous_frame, (gsize)width * height * 4u);
+    g_byte_array_set_size(self->previous_frame, (gsize) width * height * 4u);
     memset(self->previous_frame->data, 0, self->previous_frame->len);
 
     self->tiles_x = (width + 63) / 64;
@@ -249,14 +249,14 @@ copy_frame_linear(DrdFrame *frame, GByteArray *buffer)
     const guint height = drd_frame_get_height(frame);
     const guint bytes_per_row = width * 4u;
 
-    g_byte_array_set_size(buffer, (gsize)bytes_per_row * height);
+    g_byte_array_set_size(buffer, (gsize) bytes_per_row * height);
     guint8 *dst = buffer->data;
     const guint8 *src = drd_frame_get_data(frame, NULL);
 
     for (guint row = 0; row < height; ++row)
     {
-        const guint8 *src_row = src + (gsize)row * stride;
-        memcpy(dst + (gsize)row * bytes_per_row, src_row, bytes_per_row);
+        const guint8 *src_row = src + (gsize) row * stride;
+        memcpy(dst + (gsize) row * bytes_per_row, src_row, bytes_per_row);
     }
 
     return dst;
@@ -331,9 +331,9 @@ drd_rfx_encoder_write_progressive_message(RFX_MESSAGE *rfx_message,
 
         drd_stream_write_uint16(stream, 0xCCC3);
         drd_stream_write_uint32(stream, block_len);
-        drd_stream_write_uint8(stream, 0);   /* ctxId */
+        drd_stream_write_uint8(stream, 0); /* ctxId */
         drd_stream_write_uint16(stream, 0x0040);
-        drd_stream_write_uint8(stream, 0);   /* flags */
+        drd_stream_write_uint8(stream, 0); /* flags */
     }
 
     block_len = 12;
@@ -374,11 +374,11 @@ drd_rfx_encoder_write_progressive_message(RFX_MESSAGE *rfx_message,
 
     drd_stream_write_uint16(stream, 0xCCC4);
     drd_stream_write_uint32(stream, block_len);
-    drd_stream_write_uint8(stream, 0x40);          /* tileSize */
+    drd_stream_write_uint8(stream, 0x40); /* tileSize */
     drd_stream_write_uint16(stream, n_rfx_rects);
     drd_stream_write_uint8(stream, n_quant_vals);
-    drd_stream_write_uint8(stream, 0);             /* numProgQuant */
-    drd_stream_write_uint8(stream, 0);             /* flags */
+    drd_stream_write_uint8(stream, 0); /* numProgQuant */
+    drd_stream_write_uint8(stream, 0); /* flags */
     drd_stream_write_uint16(stream, n_rfx_tiles);
     drd_stream_write_uint32(stream, tiles_data_size);
 
@@ -446,10 +446,10 @@ drd_rfx_encoder_write_progressive_message(RFX_MESSAGE *rfx_message,
 
 static gboolean
 drd_rfx_encoder_write_stream(DrdRfxEncoder *self,
-                              DrdRfxEncoderKind kind,
-                              wStream *stream,
-                              RFX_MESSAGE *message,
-                              GError **error)
+                             DrdRfxEncoderKind kind,
+                             wStream *stream,
+                             RFX_MESSAGE *message,
+                             GError **error)
 {
     Stream_SetPosition(stream, 0);
 
@@ -529,7 +529,7 @@ collect_dirty_rects(DrdRfxEncoder *self,
 
                 if (different)
                 {
-                    RFX_RECT rect = {(UINT16)x, (UINT16)y, (UINT16)tile_w, (UINT16)tile_h};
+                    RFX_RECT rect = {(UINT16) x, (UINT16) y, (UINT16) tile_w, (UINT16) tile_h};
                     g_array_append_val(rects, rect);
                     has_dirty = TRUE;
                 }
@@ -544,10 +544,10 @@ collect_dirty_rects(DrdRfxEncoder *self,
 
 gboolean
 drd_rfx_encoder_encode(DrdRfxEncoder *self,
-                        DrdFrame *frame,
-                        DrdEncodedFrame *output,
-                        DrdRfxEncoderKind kind,
-                        GError **error)
+                       DrdFrame *frame,
+                       DrdEncodedFrame *output,
+                       DrdRfxEncoderKind kind,
+                       GError **error)
 {
     g_return_val_if_fail(DRD_IS_RFX_ENCODER(self), FALSE);
     g_return_val_if_fail(DRD_IS_FRAME(frame), FALSE);
@@ -578,8 +578,9 @@ drd_rfx_encoder_encode(DrdRfxEncoder *self,
 
     guint64 timestamp = drd_frame_get_timestamp(frame);
     DrdFrameCodec frame_codec =
-        (kind == DRD_RFX_ENCODER_KIND_PROGRESSIVE) ? DRD_FRAME_CODEC_RFX_PROGRESSIVE
-                                                   : DRD_FRAME_CODEC_RFX;
+            (kind == DRD_RFX_ENCODER_KIND_PROGRESSIVE)
+                ? DRD_FRAME_CODEC_RFX_PROGRESSIVE
+                : DRD_FRAME_CODEC_RFX;
     if (!rfx_context_reset(self->context, self->width, self->height))
     {
         g_set_error_literal(error,
@@ -592,8 +593,9 @@ drd_rfx_encoder_encode(DrdRfxEncoder *self,
     const guint8 *linear_frame = copy_frame_linear(frame, self->bottom_up_frame);
     const guint expected_stride = self->width * 4u;
 
-    g_autoptr(GArray) rects = g_array_sized_new(FALSE, FALSE, sizeof(RFX_RECT),
-                                                self->tiles_x * self->tiles_y);
+    g_autoptr(GArray)
+    rects = g_array_sized_new(FALSE, FALSE, sizeof(RFX_RECT),
+                              self->tiles_x * self->tiles_y);
 
     const guint8 *previous_linear = (self->previous_frame->len ==
                                      self->bottom_up_frame->len)
@@ -609,24 +611,24 @@ drd_rfx_encoder_encode(DrdRfxEncoder *self,
         {
             g_array_index(self->tile_hashes, guint64, idx) = 0;
         }
-        RFX_RECT full = {0, 0, (UINT16)self->width, (UINT16)self->height};
+        RFX_RECT full = {0, 0, (UINT16) self->width, (UINT16) self->height};
         g_array_append_val(rects, full);
     }
     else if (!collect_dirty_rects(self, linear_frame, previous_linear, expected_stride, rects))
     {
         drd_encoded_frame_configure(output,
-                                     self->width,
-                                     self->height,
-                                     drd_frame_get_stride(frame),
-                                     FALSE,
-                                     timestamp,
-                                     frame_codec);
+                                    self->width,
+                                    self->height,
+                                    drd_frame_get_stride(frame),
+                                    FALSE,
+                                    timestamp,
+                                    frame_codec);
         drd_encoded_frame_set_quality(output, 0, 0, FALSE);
         return TRUE;
     }
 
     RFX_MESSAGE *message = rfx_encode_message(self->context,
-                                              (RFX_RECT *)rects->data,
+                                              (RFX_RECT *) rects->data,
                                               rects->len,
                                               linear_frame,
                                               self->width,
@@ -641,7 +643,7 @@ drd_rfx_encoder_encode(DrdRfxEncoder *self,
         return FALSE;
     }
 
-    wStream *stream = Stream_New(NULL, (gsize)self->width * self->height * 4u);
+    wStream *stream = Stream_New(NULL, (gsize) self->width * self->height * 4u);
     if (stream == NULL)
     {
         rfx_message_free(self->context, message);
@@ -665,12 +667,12 @@ drd_rfx_encoder_encode(DrdRfxEncoder *self,
     const guint8 *payload_data = Stream_Buffer(stream);
 
     drd_encoded_frame_configure(output,
-                                 self->width,
-                                 self->height,
-                                 expected_stride,
-                                 FALSE,
-                                 timestamp,
-                                 frame_codec);
+                                self->width,
+                                self->height,
+                                expected_stride,
+                                FALSE,
+                                timestamp,
+                                frame_codec);
     guint8 *payload = drd_encoded_frame_ensure_capacity(output, payload_size);
     memcpy(payload, payload_data, payload_size);
     drd_encoded_frame_set_quality(output, 0, 0, keyframe_encode);

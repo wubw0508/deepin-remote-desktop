@@ -4,6 +4,7 @@
 #include <winpr/ssl.h>
 #include <winpr/wtsapi.h>
 #include <freerdp/primitives.h>
+
 static gboolean
 drd_initialize_winpr(void)
 {
@@ -30,9 +31,11 @@ main(int argc, char **argv)
     {
         return 1;
     }
-    primitives_get ();
-    g_autoptr(DrdApplication) app = drd_application_new();
-    g_autoptr(GError) error = NULL;
+    primitives_get();
+    g_autoptr(DrdApplication)
+    app = drd_application_new();
+    g_autoptr(GError)
+    error = NULL;
 
     int status = drd_application_run(app, argc, argv, &error);
     if (status != 0 && error != NULL)

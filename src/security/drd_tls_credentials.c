@@ -65,9 +65,9 @@ drd_tls_credentials_init(DrdTlsCredentials *self)
 
 static gboolean
 drd_tls_credentials_apply_pem(DrdTlsCredentials *self,
-                               const gchar *certificate_pem,
-                               const gchar *private_key_pem,
-                               GError **error)
+                              const gchar *certificate_pem,
+                              const gchar *private_key_pem,
+                              GError **error)
 {
     g_return_val_if_fail(certificate_pem != NULL, FALSE);
     g_return_val_if_fail(private_key_pem != NULL, FALSE);
@@ -113,7 +113,8 @@ drd_tls_credentials_apply_pem(DrdTlsCredentials *self,
 
 /* 读取 PEM 证书与私钥，失败时通过 GError 传递细节，方便上层统一记录。 */
 static gboolean
-drd_tls_credentials_load(DrdTlsCredentials *self, const gchar *certificate_path, const gchar *private_key_path, GError **error)
+drd_tls_credentials_load(DrdTlsCredentials *self, const gchar *certificate_path, const gchar *private_key_path,
+                         GError **error)
 {
     g_autofree gchar *cert_data = NULL;
     if (!g_file_get_contents(certificate_path, &cert_data, NULL, error))

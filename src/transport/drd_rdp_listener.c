@@ -32,16 +32,25 @@ typedef struct
 } DrdRdpPeerContext;
 
 static BOOL drd_rdp_peer_keyboard_event(rdpInput *input, UINT16 flags, UINT8 code);
+
 static BOOL drd_rdp_peer_unicode_event(rdpInput *input, UINT16 flags, UINT16 code);
+
 static BOOL drd_rdp_peer_pointer_event(rdpInput *input, UINT16 flags, UINT16 x, UINT16 y);
+
 static BOOL drd_peer_capabilities(freerdp_peer *client);
+
 static gboolean drd_rdp_listener_has_active_session(DrdRdpListener *self);
+
 static gboolean drd_rdp_listener_session_closed(DrdRdpListener *self, DrdRdpSession *session);
+
 static void drd_rdp_listener_on_session_closed(DrdRdpSession *session, gpointer user_data);
+
 static gboolean drd_rdp_listener_authenticate_tls_login(DrdRdpPeerContext *ctx, freerdp_peer *client);
+
 static gboolean drd_rdp_listener_incoming(GSocketService *service,
                                           GSocketConnection *connection,
                                           GObject *source_object);
+
 static gboolean drd_rdp_listener_connection_keep_open(GSocketConnection *connection);
 
 struct _DrdRdpListener
@@ -339,7 +348,7 @@ drd_rdp_listener_peer_from_connection(GSocketConnection *connection, GError **er
 static BOOL
 drd_peer_context_new(freerdp_peer *client, rdpContext *context)
 {
-    DrdRdpPeerContext *ctx = (DrdRdpPeerContext *)context;
+    DrdRdpPeerContext *ctx = (DrdRdpPeerContext *) context;
     ctx->session = drd_rdp_session_new(client);
     ctx->runtime = NULL;
     ctx->nla_sam = NULL;
@@ -351,7 +360,7 @@ drd_peer_context_new(freerdp_peer *client, rdpContext *context)
 static void
 drd_peer_context_free(freerdp_peer *client G_GNUC_UNUSED, rdpContext *context)
 {
-    DrdRdpPeerContext *ctx = (DrdRdpPeerContext *)context;
+    DrdRdpPeerContext *ctx = (DrdRdpPeerContext *) context;
     if (ctx->session != NULL)
     {
         if (ctx->listener != NULL)
@@ -380,7 +389,7 @@ drd_peer_context_free(freerdp_peer *client G_GNUC_UNUSED, rdpContext *context)
 static BOOL
 drd_peer_post_connect(freerdp_peer *client)
 {
-    DrdRdpPeerContext *ctx = (DrdRdpPeerContext *)client->context;
+    DrdRdpPeerContext *ctx = (DrdRdpPeerContext *) client->context;
     if (ctx == NULL || ctx->session == NULL)
     {
         return FALSE;
@@ -406,7 +415,7 @@ drd_peer_post_connect(freerdp_peer *client)
 static BOOL
 drd_peer_activate(freerdp_peer *client)
 {
-    DrdRdpPeerContext *ctx = (DrdRdpPeerContext *)client->context;
+    DrdRdpPeerContext *ctx = (DrdRdpPeerContext *) client->context;
     if (ctx == NULL || ctx->session == NULL)
     {
         return FALSE;
@@ -417,8 +426,8 @@ drd_peer_activate(freerdp_peer *client)
 static void
 drd_peer_disconnected(freerdp_peer *client)
 {
-    DRD_LOG_MESSAGE("%s peer disconnected",client->hostname );
-    DrdRdpPeerContext *ctx = (DrdRdpPeerContext *)client->context;
+    DRD_LOG_MESSAGE("%s peer disconnected", client->hostname);
+    DrdRdpPeerContext *ctx = (DrdRdpPeerContext *) client->context;
     if (ctx != NULL && ctx->session != NULL)
     {
         drd_rdp_session_set_peer_state(ctx->session, "disconnected");
@@ -448,11 +457,11 @@ drd_peer_capabilities(freerdp_peer *client)
     const guint32 client_height = freerdp_settings_get_uint32(settings, FreeRDP_DesktopHeight);
     const gboolean desktop_resize = freerdp_settings_get_bool(settings, FreeRDP_DesktopResize);
 
-    DrdRdpPeerContext *ctx = (DrdRdpPeerContext *)client->context;
+    DrdRdpPeerContext *ctx = (DrdRdpPeerContext *) client->context;
     if (ctx == NULL || ctx->vcm == NULL || ctx->vcm == INVALID_HANDLE_VALUE)
     {
         DRD_LOG_WARNING("Peer %s missing virtual channel manager during capability exchange",
-                         client->hostname);
+                        client->hostname);
         return FALSE;
     }
 
@@ -469,16 +478,16 @@ drd_peer_capabilities(freerdp_peer *client)
             drd_rdp_session_set_peer_state(ctx->session, "desktop-resize-unsupported");
         }
         DRD_LOG_WARNING("Peer %s disabled DesktopResize capability (client %ux%u), rejecting connection",
-                         client->hostname,
-                         client_width,
-                         client_height);
+                        client->hostname,
+                        client_width,
+                        client_height);
         return FALSE;
     }
 
     DRD_LOG_MESSAGE("Peer %s capabilities accepted with DesktopResize enabled (%ux%u requested)",
-                     client->hostname,
-                     client_width,
-                     client_height);
+                    client->hostname,
+                    client_width,
+                    client_height);
     return TRUE;
 }
 
@@ -490,7 +499,7 @@ drd_peer_get_dispatcher(rdpInput *input)
         return NULL;
     }
 
-    DrdRdpPeerContext *ctx = (DrdRdpPeerContext *)input->context;
+    DrdRdpPeerContext *ctx = (DrdRdpPeerContext *) input->context;
     if (ctx == NULL || ctx->runtime == NULL)
     {
         return NULL;
@@ -564,7 +573,7 @@ drd_configure_peer_settings(DrdRdpListener *self, freerdp_peer *client, GError *
         return FALSE;
     }
 
-    DrdRdpPeerContext *ctx = (DrdRdpPeerContext *)client->context;
+    DrdRdpPeerContext *ctx = (DrdRdpPeerContext *) client->context;
     if (ctx == NULL)
     {
         return FALSE;
@@ -611,7 +620,7 @@ drd_configure_peer_settings(DrdRdpListener *self, freerdp_peer *client, GError *
             g_set_error_literal(error,
                                 G_IO_ERROR,
                                 G_IO_ERROR_FAILED,
-                                        "Failed to configure SAM database for NLA");
+                                "Failed to configure SAM database for NLA");
             return FALSE;
         }
     }
@@ -634,7 +643,7 @@ drd_configure_peer_settings(DrdRdpListener *self, freerdp_peer *client, GError *
     const guint32 width = self->encoding_options.width;
     const guint32 height = self->encoding_options.height;
     const gboolean enable_graphics_pipeline =
-        (self->encoding_options.mode == DRD_ENCODING_MODE_RFX);
+            (self->encoding_options.mode == DRD_ENCODING_MODE_RFX);
     if (width == 0 || height == 0)
     {
         g_set_error_literal(error,
@@ -673,12 +682,12 @@ drd_configure_peer_settings(DrdRdpListener *self, freerdp_peer *client, GError *
         !freerdp_settings_set_uint32(settings, FreeRDP_VCFlags, VCCAPS_COMPR_SC) ||
         !freerdp_settings_set_uint32(settings, FreeRDP_VCChunkSize, 16256) ||
         !freerdp_settings_set_uint32(settings, FreeRDP_PointerCacheSize, 100) ||
-        !freerdp_settings_set_uint32(settings, FreeRDP_MultifragMaxRequestSize, 0)||
-        !freerdp_settings_set_uint32 (settings, FreeRDP_OsMajorType,OSMAJORTYPE_UNIX)||
-        !freerdp_settings_set_uint32 (settings, FreeRDP_OsMinorType,OSMINORTYPE_PSEUDO_XSERVER)||
-        !freerdp_settings_set_bool (settings, FreeRDP_GfxSmallCache, FALSE)||
-        !freerdp_settings_set_bool (settings, FreeRDP_GfxThinClient, TRUE)||
-        !freerdp_settings_set_bool (settings, FreeRDP_SupportMultitransport, FALSE))
+        !freerdp_settings_set_uint32(settings, FreeRDP_MultifragMaxRequestSize, 0) ||
+        !freerdp_settings_set_uint32(settings, FreeRDP_OsMajorType,OSMAJORTYPE_UNIX) ||
+        !freerdp_settings_set_uint32(settings, FreeRDP_OsMinorType,OSMINORTYPE_PSEUDO_XSERVER) ||
+        !freerdp_settings_set_bool(settings, FreeRDP_GfxSmallCache, FALSE) ||
+        !freerdp_settings_set_bool(settings, FreeRDP_GfxThinClient, TRUE) ||
+        !freerdp_settings_set_bool(settings, FreeRDP_SupportMultitransport, FALSE))
     {
         g_set_error_literal(error,
                             G_IO_ERROR,
@@ -719,8 +728,8 @@ drd_configure_peer_settings(DrdRdpListener *self, freerdp_peer *client, GError *
 
 static gboolean
 drd_rdp_listener_accept_peer(DrdRdpListener *self,
-                              freerdp_peer   *peer,
-                              const gchar    *peer_name)
+                             freerdp_peer *peer,
+                             const gchar *peer_name)
 {
     DRD_LOG_MESSAGE("listener accept peer");
     g_return_val_if_fail(DRD_IS_RDP_LISTENER(self), FALSE);
@@ -770,14 +779,14 @@ drd_rdp_listener_accept_peer(DrdRdpListener *self,
         return FALSE;
     }
 
-    DrdRdpPeerContext *ctx = (DrdRdpPeerContext *)peer->context;
+    DrdRdpPeerContext *ctx = (DrdRdpPeerContext *) peer->context;
     if (ctx == NULL || ctx->session == NULL)
     {
         DRD_LOG_WARNING("Peer %s context did not expose a session", peer->hostname);
         return FALSE;
     }
 
-    ctx->vcm = WTSOpenServerA((LPSTR)peer->context);
+    ctx->vcm = WTSOpenServerA((LPSTR) peer->context);
     if (ctx->vcm == NULL || ctx->vcm == INVALID_HANDLE_VALUE)
     {
         DRD_LOG_WARNING("Peer %s failed to create virtual channel manager", peer->hostname);
@@ -807,19 +816,20 @@ drd_rdp_listener_accept_peer(DrdRdpListener *self,
     {
         rdpInput *input = peer->context->input;
         input->context = peer->context;
-        if (!self->system_mode) {
+        if (!self->system_mode)
+        {
             input->KeyboardEvent = drd_rdp_peer_keyboard_event;
             input->UnicodeKeyboardEvent = drd_rdp_peer_unicode_event;
             input->MouseEvent = drd_rdp_peer_pointer_event;
             input->ExtendedMouseEvent = drd_rdp_peer_pointer_event;
         }
-
     }
 
     DRD_LOG_MESSAGE("Accepted connection from %s",
                     peer_name != NULL ? peer_name : peer->hostname);
     return TRUE;
 }
+
 static gboolean
 drd_rdp_listener_handle_connection(DrdRdpListener *self,
                                    GSocketConnection *connection,
@@ -852,7 +862,7 @@ drd_rdp_listener_handle_connection(DrdRdpListener *self,
 
     if (self->session_cb != NULL && peer->context != NULL)
     {
-        DrdRdpPeerContext *ctx = (DrdRdpPeerContext *)peer->context;
+        DrdRdpPeerContext *ctx = (DrdRdpPeerContext *) peer->context;
         if (ctx != NULL && ctx->session != NULL)
         {
             self->session_cb(self, ctx->session, connection, self->session_cb_data);
@@ -869,9 +879,9 @@ drd_rdp_listener_handle_connection(DrdRdpListener *self,
 }
 
 static gboolean
-drd_rdp_listener_incoming(GSocketService    *service,
+drd_rdp_listener_incoming(GSocketService *service,
                           GSocketConnection *connection,
-                          GObject           *source_object G_GNUC_UNUSED)
+                          GObject *source_object G_GNUC_UNUSED)
 {
     DrdRdpListener *self = DRD_RDP_LISTENER(service);
     g_autoptr(GError) accept_error = NULL;
@@ -880,7 +890,7 @@ drd_rdp_listener_incoming(GSocketService    *service,
     if (self->system_mode && self->delegate_func != NULL)
     {
         const gboolean handled =
-            self->delegate_func(self, connection, self->delegate_data, &accept_error);
+                self->delegate_func(self, connection, self->delegate_data, &accept_error);
 
         if (handled)
         {
@@ -956,7 +966,7 @@ drd_rdp_listener_bind(DrdRdpListener *self, GError **error)
         }
 
         g_autoptr(GSocketAddress) socket_address =
-            g_inet_socket_address_new(inet_address, self->port);
+                g_inet_socket_address_new(inet_address, self->port);
 
         if (!g_socket_listener_add_address(listener,
                                            socket_address,
@@ -1058,6 +1068,7 @@ drd_rdp_listener_adopt_connection(DrdRdpListener *self,
 
     return drd_rdp_listener_handle_connection(self, connection, error);
 }
+
 static gboolean
 drd_rdp_listener_authenticate_tls_login(DrdRdpPeerContext *ctx, freerdp_peer *client)
 {
@@ -1079,12 +1090,12 @@ drd_rdp_listener_authenticate_tls_login(DrdRdpPeerContext *ctx, freerdp_peer *cl
 
     g_autoptr(GError) auth_error = NULL;
     DrdLocalSession *local_session =
-        drd_local_session_new(ctx->listener->pam_service,
-                              username,
-                              domain,
-                              password,
-                              client->hostname,
-                              &auth_error);
+            drd_local_session_new(ctx->listener->pam_service,
+                                  username,
+                                  domain,
+                                  password,
+                                  client->hostname,
+                                  &auth_error);
 
     if (password != NULL)
     {
@@ -1111,6 +1122,7 @@ drd_rdp_listener_authenticate_tls_login(DrdRdpPeerContext *ctx, freerdp_peer *cl
     DRD_LOG_MESSAGE("Peer %s TLS/PAM single sign-on accepted for %s", client->hostname, username);
     return TRUE;
 }
+
 static gboolean
 drd_rdp_listener_connection_keep_open(GSocketConnection *connection)
 {

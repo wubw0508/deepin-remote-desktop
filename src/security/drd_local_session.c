@@ -21,7 +21,7 @@ typedef struct
 static int
 drd_local_session_pam_conv(int num_msg, const struct pam_message **msg, struct pam_response **resp, void *user_data)
 {
-    DrdPamConversationData *conv = (DrdPamConversationData *)user_data;
+    DrdPamConversationData *conv = (DrdPamConversationData *) user_data;
     struct pam_response *responses = calloc(num_msg, sizeof(struct pam_response));
     if (responses == NULL)
     {

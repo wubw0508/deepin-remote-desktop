@@ -48,6 +48,7 @@ struct _DrdX11Capture
 G_DEFINE_TYPE(DrdX11Capture, drd_x11_capture, G_TYPE_OBJECT)
 
 static gpointer drd_x11_capture_thread(gpointer user_data);
+
 static void drd_x11_capture_cleanup_locked(DrdX11Capture *self);
 
 static void
@@ -100,10 +101,10 @@ drd_x11_capture_new(DrdFrameQueue *queue)
 
 static gboolean
 drd_x11_capture_prepare_display(DrdX11Capture *self,
-                                 const gchar *display_name,
-                                 guint requested_width,
-                                 guint requested_height,
-                                 GError **error)
+                                const gchar *display_name,
+                                guint requested_width,
+                                guint requested_height,
+                                GError **error)
 {
     self->display = XOpenDisplay(display_name);
     if (self->display == NULL)
@@ -139,8 +140,8 @@ drd_x11_capture_prepare_display(DrdX11Capture *self,
     self->screen = DefaultScreen(self->display);
     self->root = RootWindow(self->display, self->screen);
 
-    self->width = (requested_width > 0) ? requested_width : (guint)DisplayWidth(self->display, self->screen);
-    self->height = (requested_height > 0) ? requested_height : (guint)DisplayHeight(self->display, self->screen);
+    self->width = (requested_width > 0) ? requested_width : (guint) DisplayWidth(self->display, self->screen);
+    self->height = (requested_height > 0) ? requested_height : (guint) DisplayHeight(self->display, self->screen);
 
     self->image = XShmCreateImage(self->display,
                                   DefaultVisual(self->display, self->screen),
@@ -148,8 +149,8 @@ drd_x11_capture_prepare_display(DrdX11Capture *self,
                                   ZPixmap,
                                   NULL,
                                   &self->shm.info,
-                                  (int)self->width,
-                                  (int)self->height);
+                                  (int) self->width,
+                                  (int) self->height);
     if (self->image == NULL)
     {
         g_set_error_literal(error,
@@ -159,7 +160,7 @@ drd_x11_capture_prepare_display(DrdX11Capture *self,
         return FALSE;
     }
 
-    const size_t image_size = (size_t)self->image->bytes_per_line * (size_t)self->image->height;
+    const size_t image_size = (size_t) self->image->bytes_per_line * (size_t) self->image->height;
     self->shm.info.shmid = shmget(IPC_PRIVATE, image_size, IPC_CREAT | 0600);
     if (self->shm.info.shmid < 0)
     {
@@ -171,8 +172,8 @@ drd_x11_capture_prepare_display(DrdX11Capture *self,
         return FALSE;
     }
 
-    self->shm.info.shmaddr = (char *)shmat(self->shm.info.shmid, NULL, 0);
-    if (self->shm.info.shmaddr == (char *)(-1))
+    self->shm.info.shmaddr = (char *) shmat(self->shm.info.shmid, NULL, 0);
+    if (self->shm.info.shmaddr == (char *) (-1))
     {
         g_set_error(error,
                     G_IO_ERROR,
@@ -211,10 +212,10 @@ drd_x11_capture_prepare_display(DrdX11Capture *self,
 
 gboolean
 drd_x11_capture_start(DrdX11Capture *self,
-                        const gchar *display_name,
-                        guint requested_width,
-                        guint requested_height,
-                        GError **error)
+                      const gchar *display_name,
+                      guint requested_width,
+                      guint requested_height,
+                      GError **error)
 {
     g_return_val_if_fail(DRD_IS_X11_CAPTURE(self), FALSE);
 
@@ -232,10 +233,10 @@ drd_x11_capture_start(DrdX11Capture *self,
     }
 
     if (!drd_x11_capture_prepare_display(self,
-                                          self->display_name,
-                                          requested_width,
-                                          requested_height,
-                                          error))
+                                         self->display_name,
+                                         requested_width,
+                                         requested_height,
+                                         error))
     {
         drd_x11_capture_cleanup_locked(self);
         g_mutex_unlock(&self->state_mutex);
@@ -398,7 +399,7 @@ drd_x11_capture_thread(gpointer user_data)
                     sleep_us = target_interval;
                 }
 
-                g_usleep((gulong)sleep_us);
+                g_usleep((gulong) sleep_us);
             }
             continue;
         }
@@ -406,18 +407,18 @@ drd_x11_capture_thread(gpointer user_data)
         if (!XShmGetImage(display, root, image, 0, 0, AllPlanes))
         {
             DRD_LOG_WARNING("XShmGetImage failed, retrying");
-            g_usleep((gulong)target_interval);
+            g_usleep((gulong) target_interval);
             continue;
         }
 
         g_autoptr(DrdFrame) frame = drd_frame_new();
         drd_frame_configure(frame,
-                             width,
-                             height,
-                             (guint)image->bytes_per_line,
-                             (guint64)now);
+                            width,
+                            height,
+                            (guint) image->bytes_per_line,
+                            (guint64) now);
 
-        const gsize frame_size = (gsize)image->bytes_per_line * (gsize)image->height;
+        const gsize frame_size = (gsize) image->bytes_per_line * (gsize) image->height;
         guint8 *buffer = drd_frame_ensure_capacity(frame, frame_size);
         if (buffer != NULL)
         {

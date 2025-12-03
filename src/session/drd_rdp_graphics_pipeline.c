@@ -57,10 +57,12 @@ drd_rdp_graphics_pipeline_error_quark(void)
 }
 
 static BOOL drd_rdpgfx_channel_assigned(RdpgfxServerContext *context, UINT32 channel_id);
+
 static UINT drd_rdpgfx_caps_advertise(RdpgfxServerContext *context,
-                                       const RDPGFX_CAPS_ADVERTISE_PDU *caps);
+                                      const RDPGFX_CAPS_ADVERTISE_PDU *caps);
+
 static UINT drd_rdpgfx_frame_ack(RdpgfxServerContext *context,
-                                  const RDPGFX_FRAME_ACKNOWLEDGE_PDU *ack);
+                                 const RDPGFX_FRAME_ACKNOWLEDGE_PDU *ack);
 
 static guint32
 drd_rdp_graphics_pipeline_build_timestamp(void)
@@ -70,9 +72,9 @@ drd_rdp_graphics_pipeline_build_timestamp(void)
 
     if (now != NULL)
     {
-        timestamp = ((guint32)g_date_time_get_hour(now) << 22) |
-                    ((guint32)g_date_time_get_minute(now) << 16) |
-                    ((guint32)g_date_time_get_second(now) << 10) |
+        timestamp = ((guint32) g_date_time_get_hour(now) << 22) |
+                    ((guint32) g_date_time_get_minute(now) << 16) |
+                    ((guint32) g_date_time_get_second(now) << 10) |
                     ((guint32)(g_date_time_get_microsecond(now) / 1000));
         g_date_time_unref(now);
     }
@@ -296,7 +298,7 @@ drd_rdp_graphics_pipeline_can_submit(DrdRdpGraphicsPipeline *self)
     g_mutex_lock(&self->lock);
     gboolean ok = self->surface_ready &&
                   (self->frame_acks_suspended ||
-                   self->outstanding_frames < (gint)self->max_outstanding_frames);
+                   self->outstanding_frames < (gint) self->max_outstanding_frames);
     g_mutex_unlock(&self->lock);
     return ok;
 }
@@ -320,7 +322,7 @@ drd_rdp_graphics_pipeline_wait_for_capacity(DrdRdpGraphicsPipeline *self,
 
     g_mutex_lock(&self->lock);
     while (self->surface_ready && !self->frame_acks_suspended &&
-           self->outstanding_frames >= (gint)self->max_outstanding_frames)
+           self->outstanding_frames >= (gint) self->max_outstanding_frames)
     {
         if (timeout_us < 0)
         {
@@ -334,16 +336,16 @@ drd_rdp_graphics_pipeline_wait_for_capacity(DrdRdpGraphicsPipeline *self,
 
     gboolean ready = self->surface_ready &&
                      (self->frame_acks_suspended ||
-                      self->outstanding_frames < (gint)self->max_outstanding_frames);
+                      self->outstanding_frames < (gint) self->max_outstanding_frames);
     g_mutex_unlock(&self->lock);
     return ready;
 }
 
 gboolean
 drd_rdp_graphics_pipeline_submit_frame(DrdRdpGraphicsPipeline *self,
-                                        DrdEncodedFrame *frame,
-                                        gboolean frame_is_keyframe,
-                                        GError **error)
+                                       DrdEncodedFrame *frame,
+                                       gboolean frame_is_keyframe,
+                                       GError **error)
 {
     g_return_val_if_fail(DRD_IS_RDP_GRAPHICS_PIPELINE(self), FALSE);
     g_return_val_if_fail(DRD_IS_ENCODED_FRAME(frame), FALSE);
@@ -390,7 +392,7 @@ drd_rdp_graphics_pipeline_submit_frame(DrdRdpGraphicsPipeline *self,
     gboolean track_ack = !self->frame_acks_suspended;
 
     if (track_ack &&
-        self->outstanding_frames >= (gint)self->max_outstanding_frames)
+        self->outstanding_frames >= (gint) self->max_outstanding_frames)
     {
         g_mutex_unlock(&self->lock);
         g_set_error_literal(error,
@@ -433,8 +435,8 @@ drd_rdp_graphics_pipeline_submit_frame(DrdRdpGraphicsPipeline *self,
     cmd.bottom = self->height;
     cmd.width = self->width;
     cmd.height = self->height;
-    cmd.length = (UINT32)payload_size;
-    cmd.data = (BYTE *)payload;
+    cmd.length = (UINT32) payload_size;
+    cmd.data = (BYTE *) payload;
 
     UINT status = CHANNEL_RC_OK;
     if (self->rdpgfx_context->SurfaceFrameCommand != NULL)

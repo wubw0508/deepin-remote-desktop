@@ -60,8 +60,8 @@ drd_encoding_manager_new(void)
 
 gboolean
 drd_encoding_manager_prepare(DrdEncodingManager *self,
-                              const DrdEncodingOptions *options,
-                              GError **error)
+                             const DrdEncodingOptions *options,
+                             GError **error)
 {
     g_return_val_if_fail(DRD_IS_ENCODING_MANAGER(self), FALSE);
 
@@ -83,9 +83,9 @@ drd_encoding_manager_prepare(DrdEncodingManager *self,
 
     gboolean ok = FALSE;
     gboolean raw_ok = drd_raw_encoder_configure(self->raw_encoder,
-                                                 options->width,
-                                                 options->height,
-                                                 (options->mode == DRD_ENCODING_MODE_RAW) ? error : NULL);
+                                                options->width,
+                                                options->height,
+                                                (options->mode == DRD_ENCODING_MODE_RAW) ? error : NULL);
     if (!raw_ok)
     {
         if (options->mode != DRD_ENCODING_MODE_RAW && error != NULL)
@@ -106,10 +106,10 @@ drd_encoding_manager_prepare(DrdEncodingManager *self,
     else
     {
         ok = drd_rfx_encoder_configure(self->rfx_encoder,
-                                        options->width,
-                                        options->height,
-                                        options->enable_frame_diff,
-                                        error);
+                                       options->width,
+                                       options->height,
+                                       options->enable_frame_diff,
+                                       error);
     }
 
     if (!ok)
@@ -121,10 +121,10 @@ drd_encoding_manager_prepare(DrdEncodingManager *self,
     self->ready = TRUE;
 
     DRD_LOG_MESSAGE("Encoding manager configured for %ux%u stream (mode=%s diff=%s)",
-              options->width,
-              options->height,
-              options->mode == DRD_ENCODING_MODE_RAW ? "raw" : "rfx",
-              options->enable_frame_diff ? "on" : "off");
+                    options->width,
+                    options->height,
+                    options->mode == DRD_ENCODING_MODE_RAW ? "raw" : "rfx",
+                    options->enable_frame_diff ? "on" : "off");
     return TRUE;
 }
 
@@ -163,11 +163,11 @@ drd_encoding_manager_is_ready(DrdEncodingManager *self)
 
 gboolean
 drd_encoding_manager_encode(DrdEncodingManager *self,
-                              DrdFrame *input,
-                              gsize max_payload,
-                              DrdFrameCodec desired_codec,
-                              DrdEncodedFrame **out_frame,
-                              GError **error)
+                            DrdFrame *input,
+                            gsize max_payload,
+                            DrdFrameCodec desired_codec,
+                            DrdEncodedFrame **out_frame,
+                            GError **error)
 {
     g_return_val_if_fail(DRD_IS_ENCODING_MANAGER(self), FALSE);
     g_return_val_if_fail(DRD_IS_FRAME(input), FALSE);
@@ -211,8 +211,8 @@ drd_encoding_manager_encode(DrdEncodingManager *self,
                 if (payload_len > max_payload)
                 {
                     DRD_LOG_MESSAGE("RFX payload %zu exceeds peer limit %zu, falling back to raw frame",
-                              payload_len,
-                              max_payload);
+                                    payload_len,
+                                    max_payload);
                     ok = drd_raw_encoder_encode(self->raw_encoder,
                                                 input,
                                                 self->scratch_frame,

@@ -73,7 +73,7 @@ drd_nla_sam_write_entry(int fd, const gchar *username, const gchar *nt_hash_hex,
                         g_strerror(errno));
             return FALSE;
         }
-        written += (gsize)ret;
+        written += (gsize) ret;
     }
 
     if (fsync(fd) != 0)
@@ -177,7 +177,7 @@ drd_nla_sam_hash_password(const gchar *password)
     g_return_val_if_fail(password != NULL && *password != '\0', NULL);
 
     uint8_t hash[16];
-    if (!NTOWFv1A((LPSTR)password, strlen(password), hash))
+    if (!NTOWFv1A((LPSTR) password, strlen(password), hash))
     {
         DRD_LOG_WARNING("Failed to initialize NT hash for NLA credentials");
         return NULL;

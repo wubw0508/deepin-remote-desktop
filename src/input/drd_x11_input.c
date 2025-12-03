@@ -31,8 +31,9 @@ struct _DrdX11Input
 
 G_DEFINE_TYPE(DrdX11Input, drd_x11_input, G_TYPE_OBJECT)
 
-static gboolean drd_x11_input_open_display(DrdX11Input *self, GError **error);
-static void drd_x11_input_close_display(DrdX11Input *self);
+static gboolean drd_x11_input_open_display(DrdX11Input * self, GError * *error);
+static void drd_x11_input_close_display(DrdX11Input * self);
+
 static KeyCode drd_x11_input_lookup_special_keycode(DrdX11Input *self,
                                                     guint8 scancode,
                                                     gboolean extended);
@@ -113,8 +114,8 @@ drd_x11_input_open_display(DrdX11Input *self, GError **error)
 
     self->display = display;
     self->screen = DefaultScreen(display);
-    self->desktop_width = (guint)DisplayWidth(display, self->screen);
-    self->desktop_height = (guint)DisplayHeight(display, self->screen);
+    self->desktop_width = (guint) DisplayWidth(display, self->screen);
+    self->desktop_height = (guint) DisplayHeight(display, self->screen);
     if (self->desktop_width == 0)
     {
         self->desktop_width = 1920;
@@ -241,7 +242,7 @@ drd_x11_input_inject_keyboard(DrdX11Input *self, guint16 flags, guint8 scancode,
     const gboolean release = (flags & KBD_FLAGS_RELEASE) != 0;
     const gboolean extended = (flags & (KBD_FLAGS_EXTENDED | KBD_FLAGS_EXTENDED1)) != 0;
     const UINT32 rdp_scancode = MAKE_RDP_SCANCODE(scancode, extended);
-    const guint8 base_scancode = (guint8)RDP_SCANCODE_CODE(rdp_scancode);
+    const guint8 base_scancode = (guint8) RDP_SCANCODE_CODE(rdp_scancode);
     UINT32 x11_keycode = freerdp_keyboard_get_x11_keycode_from_rdp_scancode(
         base_scancode, extended ? TRUE : FALSE);
 
@@ -260,7 +261,7 @@ drd_x11_input_inject_keyboard(DrdX11Input *self, guint16 flags, guint8 scancode,
     }
 
     XTestFakeKeyEvent(self->display,
-                      (unsigned int)x11_keycode,
+                      (unsigned int) x11_keycode,
                       release ? False : True,
                       CurrentTime);
     XFlush(self->display);
@@ -274,9 +275,9 @@ gboolean
 drd_x11_input_inject_unicode(DrdX11Input *self, guint16 flags, guint16 codepoint, GError **error)
 {
     g_return_val_if_fail(DRD_IS_X11_INPUT(self), FALSE);
-    (void)flags;
-    (void)codepoint;
-    (void)error;
+    (void) flags;
+    (void) codepoint;
+    (void) error;
     /* Unicode injection is not yet implemented; silently ignore for now. */
     return TRUE;
 }
@@ -297,10 +298,10 @@ drd_x11_input_pointer_button(guint16 flags, guint16 mask, int button_id)
 /* 注入指针移动、按键及滚轮事件，同时处理分辨率缩放。 */
 gboolean
 drd_x11_input_inject_pointer(DrdX11Input *self,
-                              guint16 flags,
-                              guint16 x,
-                              guint16 y,
-                              GError **error)
+                             guint16 flags,
+                             guint16 x,
+                             guint16 y,
+                             GError **error)
 {
     g_return_val_if_fail(DRD_IS_X11_INPUT(self), FALSE);
 
@@ -325,23 +326,23 @@ drd_x11_input_inject_pointer(DrdX11Input *self,
     guint16 target_y = clamped_stream_y;
     if (stream_width != desktop_width)
     {
-        const gdouble scale_x = (gdouble)desktop_width / (gdouble)stream_width;
-        guint scaled = (guint)((gdouble)clamped_stream_x * scale_x + 0.5);
+        const gdouble scale_x = (gdouble) desktop_width / (gdouble) stream_width;
+        guint scaled = (guint)((gdouble) clamped_stream_x * scale_x + 0.5);
         if (scaled >= desktop_width)
         {
             scaled = desktop_width - 1;
         }
-        target_x = (guint16)scaled;
+        target_x = (guint16) scaled;
     }
     if (stream_height != desktop_height)
     {
-        const gdouble scale_y = (gdouble)desktop_height / (gdouble)stream_height;
-        guint scaled = (guint)((gdouble)clamped_stream_y * scale_y + 0.5);
+        const gdouble scale_y = (gdouble) desktop_height / (gdouble) stream_height;
+        guint scaled = (guint)((gdouble) clamped_stream_y * scale_y + 0.5);
         if (scaled >= desktop_height)
         {
             scaled = desktop_height - 1;
         }
-        target_y = (guint16)scaled;
+        target_y = (guint16) scaled;
     }
 
     if (flags & PTR_FLAGS_MOVE)
@@ -354,10 +355,10 @@ drd_x11_input_inject_pointer(DrdX11Input *self,
         guint16 mask;
         int button_id;
     } button_map[] = {
-        {PTR_FLAGS_BUTTON1, 1},
-        {PTR_FLAGS_BUTTON3, 2},
-        {PTR_FLAGS_BUTTON2, 3},
-    };
+                {PTR_FLAGS_BUTTON1, 1},
+                {PTR_FLAGS_BUTTON3, 2},
+                {PTR_FLAGS_BUTTON2, 3},
+            };
 
     for (guint i = 0; i < G_N_ELEMENTS(button_map); ++i)
     {
@@ -392,6 +393,7 @@ drd_x11_input_inject_pointer(DrdX11Input *self,
     g_mutex_unlock(&self->lock);
     return TRUE;
 }
+
 static KeyCode
 drd_x11_input_lookup_special_keycode(DrdX11Input *self, guint8 scancode, gboolean extended)
 {

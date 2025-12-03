@@ -76,9 +76,9 @@ drd_input_dispatcher_update_desktop_size(DrdInputDispatcher *self, guint width, 
 
 gboolean
 drd_input_dispatcher_handle_keyboard(DrdInputDispatcher *self,
-                                      guint16 flags,
-                                      guint8 scancode,
-                                      GError **error)
+                                     guint16 flags,
+                                     guint8 scancode,
+                                     GError **error)
 {
     g_return_val_if_fail(DRD_IS_INPUT_DISPATCHER(self), FALSE);
     return drd_x11_input_inject_keyboard(self->backend, flags, scancode, error);
@@ -86,9 +86,9 @@ drd_input_dispatcher_handle_keyboard(DrdInputDispatcher *self,
 
 gboolean
 drd_input_dispatcher_handle_unicode(DrdInputDispatcher *self,
-                                     guint16 flags,
-                                     guint16 codepoint,
-                                     GError **error)
+                                    guint16 flags,
+                                    guint16 codepoint,
+                                    GError **error)
 {
     g_return_val_if_fail(DRD_IS_INPUT_DISPATCHER(self), FALSE);
     return drd_x11_input_inject_unicode(self->backend, flags, codepoint, error);
@@ -96,10 +96,10 @@ drd_input_dispatcher_handle_unicode(DrdInputDispatcher *self,
 
 gboolean
 drd_input_dispatcher_handle_pointer(DrdInputDispatcher *self,
-                                     guint16 flags,
-                                     guint16 x,
-                                     guint16 y,
-                                     GError **error)
+                                    guint16 flags,
+                                    guint16 x,
+                                    guint16 y,
+                                    GError **error)
 {
     g_return_val_if_fail(DRD_IS_INPUT_DISPATCHER(self), FALSE);
     return drd_x11_input_inject_pointer(self->backend, flags, x, y, error);
@@ -108,6 +108,6 @@ drd_input_dispatcher_handle_pointer(DrdInputDispatcher *self,
 void
 drd_input_dispatcher_flush(DrdInputDispatcher *self)
 {
-    (void)self;
+    (void) self;
     /* No buffered events at the moment; maintained for API symmetry. */
 }
