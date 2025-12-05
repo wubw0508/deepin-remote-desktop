@@ -95,7 +95,7 @@ flowchart LR
 
 ### 2. 采集层
 - `capture/drd_capture_manager`：启动/停止屏幕捕获，维护帧队列。
-- `capture/drd_x11_capture`：X11/XShm 抓屏线程，侦听 XDamage 并推送帧；线程使用 `g_poll()` 同时监听 X11 连接与 wakeup pipe，`drd_x11_capture_stop()` 会写入 pipe 唤醒线程，避免 `XNextEvent()` 长时间阻塞导致 stop 卡死。
+- `capture/drd_x11_capture`：X11/XShm 抓屏线程，侦听 XDamage 并推送帧；damage 会合并并按 `target_interval` 节流，避免事件风暴直接抬高帧率；线程使用 `g_poll()` 同时监听 X11 连接与 wakeup pipe，`drd_x11_capture_stop()` 会写入 pipe 唤醒线程，避免 `XNextEvent()` 长时间阻塞导致 stop 卡死。
 - `utils/drd_frame_queue`：帧队列由单帧缓存升级为 3 帧环形缓冲，push 时若满会丢弃最旧帧并计数，可通过 `drd_frame_queue_get_dropped_frames()` 获取累计丢帧数，帮助诊断 encoder 背压。
 （capture/encoding/input/utils 源文件直接编译进主程序，无需构建中间静态库）
 
@@ -609,7 +609,7 @@ sequenceDiagram
 - 如果在超时时间内一直得不到 ACK，会话会调用 `drd_rdp_session_disable_graphics_pipeline()` 回退 SurfaceBits，并通过 `drd_server_runtime_request_keyframe()` 在恢复时强制全量帧，保证客户端状态重新对齐。
 
 ## Renderer & Capture 线程协作
-- **捕获线程**：`drd_x11_capture_thread()` 监听 XDamage 事件，将像素写入 `DrdFrameQueue` 环形缓冲（当前容量 3 帧，超限会丢弃最旧帧并记录计数），renderer 线程消费时仍能尽量拿到最新的画面，同时可根据丢帧指标判断是否存在背压。
+- **捕获线程**：`drd_x11_capture_thread()` 监听 XDamage 事件，将像素写入 `DrdFrameQueue` 环形缓冲（当前容量 3 帧，超限会丢弃最旧帧并记录计数），renderer 线程消费时仍能尽量拿到最新的画面，同时可根据丢帧指标判断是否存在背压；`damage_pending` 会在帧间隔内合并多个 XDamage，统一按 `target_interval`（默认 24fps）抓帧，避免事件驱动推高帧率。
 - **Renderer 线程**：`drd_rdp_session_render_thread()` 在 `render_running` 标志下循环：等待 Rdpgfx 容量 → 调用 `drd_server_runtime_pull_encoded_frame()`（同步等待并编码）→ 优先提交 Progressive，失败则退回 SurfaceBits；过程中持续维护 `frame_sequence`、关键帧状态和 `needs_keyframe` 标志，且无需额外 `DrdRdpRenderer` 模块。
 - **生命周期**：renderer 线程在会话 `Activate` 时启动，`drd_rdp_session_stop_event_thread()`/`drd_rdp_session_disable_graphics_pipeline()` 会在断开或切换时停止线程并重置状态，确保 capture/renderer 不会引用失效的 `freerdp_peer`。
 

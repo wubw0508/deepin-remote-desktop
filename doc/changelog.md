@@ -1,5 +1,14 @@
 # 变更记录
 
+## 2025-12-05：X11 捕获帧率节流
+- **目的**：当 `target_interval` 调低（如 24fps）时，damage 风暴不再把实际帧率推到显示刷新频率，降低带宽占用。
+- **范围**：`src/capture/drd_x11_capture.c`、`doc/architecture.md`、`.codex/plan/x11-capture-throttle.md`。
+- **主要改动**：
+  1. `drd_x11_capture_thread()` 引入 `damage_pending` 累积 XDamage 事件，统一按 `target_interval` 触发抓帧，即使事件持续到达也会等待到期。
+  2. 抓帧时间戳改为在实际复制像素前重新取 `g_get_monotonic_time()`，避免节流等待后时间戳滞后。
+  3. 文档记录 damage 节流/合并策略及默认 24fps 间隔，计划文件补充执行状态。
+- **影响**：在窗口/鼠标频繁变动场景下实际帧率受 `target_interval` 约束，可降低带宽和 CPU 占用；stop/wakeup pipe 流程保持不变。
+
 ## 2025-12-05：system handover 队列限流
 - **目的**：及时清理长期无人领取的 handover 对象，并限制 pending 队列规模，降低 system 模式遭遇连接洪泛时的内存与 DBus 资源压力。
 - **范围**：`src/system/drd_system_daemon.c`、`doc/architecture.md`、`.codex/plan/multi-module-optimization.md`。

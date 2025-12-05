@@ -372,8 +372,9 @@ drd_x11_capture_thread(gpointer user_data)
 {
     DrdX11Capture *self = DRD_X11_CAPTURE(user_data);
 
-    const gint64 target_interval = G_USEC_PER_SEC / 24;
+    const gint64 target_interval = G_USEC_PER_SEC / 60;
     gint64 last_capture = 0;
+    gboolean damage_pending = TRUE; /* 首帧直接抓取，之后仅在 damage 或等待到期后捕获 */
 
     while (TRUE)
     {
@@ -415,10 +416,18 @@ drd_x11_capture_thread(gpointer user_data)
             }
         }
 
-        gint64 now = g_get_monotonic_time();
-        if (!has_damage && last_capture != 0 && (now - last_capture) < target_interval)
+        if (has_damage)
         {
-            gint64 remaining = target_interval - (now - last_capture);
+            damage_pending = TRUE;
+        }
+
+        gint64 now = g_get_monotonic_time();
+        gint64 elapsed = (last_capture == 0) ? target_interval : (now - last_capture);
+        gboolean interval_elapsed = elapsed >= target_interval;
+
+        if (!interval_elapsed || !damage_pending)
+        {
+            gint64 remaining = interval_elapsed ? target_interval : (target_interval - elapsed);
             if (remaining < 1000)
             {
                 remaining = 1000;
@@ -461,7 +470,7 @@ drd_x11_capture_thread(gpointer user_data)
                 drd_x11_capture_drain_wakeup_pipe(wake_fd);
             }
 
-        continue;
+            continue;
         }
 
         if (!XShmGetImage(display, root, image, 0, 0, AllPlanes))
@@ -472,6 +481,7 @@ drd_x11_capture_thread(gpointer user_data)
         }
 
         g_autoptr(DrdFrame) frame = drd_frame_new();
+        now = g_get_monotonic_time();
         drd_frame_configure(frame,
                             width,
                             height,
@@ -486,6 +496,7 @@ drd_x11_capture_thread(gpointer user_data)
             drd_frame_queue_push(self->queue, frame);
         }
 
+        damage_pending = FALSE;
         last_capture = now;
     }
 
