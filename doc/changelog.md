@@ -1,5 +1,14 @@
 # 变更记录
 
+## 2025-12-08：RDP 监听器失败清理收敛
+- **目的**：统一 `DrdRdpListener` 的失败清理逻辑，减少连接关闭与 peer 释放的重复分支，降低遗漏风险。
+- **范围**：`src/transport/drd_rdp_listener.c`、`doc/architecture.md`、`.codex/plan/rdp_listener_cleanup.md`。
+- **主要改动**：
+  1. 新增内部清理辅助函数，按需关闭 `GSocketConnection` 并回收 `freerdp_peer`，复用 keep-open 语义。
+  2. `drd_rdp_listener_handle_connection()` 的失败与成功路径统一复用该清理函数，避免多处手动 `g_io_stream_close()`/`freerdp_peer_free()`。
+  3. `drd_rdp_listener_close_connection()` 增加 `G_IS_SOCKET_CONNECTION` 防御检查，避免未来误传非连接对象导致 unref 崩溃。
+- **影响**：连接失败分支的释放逻辑集中，后续调整只需修改单处，降低重复维护和遗漏关闭的概率，正常成功路径行为保持不变。
+
 ## 2025-12-05：编码/会话/传输模块注释完善
 - **目的**：为编码、会话、传输模块的全部函数补充中文注释，便于后续维护和排查跨库调用细节。
 - **范围**：`src/encoding/*.c`、`src/session/*.c`、`src/transport/*.c`、`.codex/plan/encoding-session-transport-comments.md`。

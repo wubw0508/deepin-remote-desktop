@@ -54,6 +54,12 @@ static gboolean drd_rdp_listener_incoming(GSocketService *service,
 
 static gboolean drd_rdp_listener_connection_keep_open(GSocketConnection *connection);
 
+static void drd_rdp_listener_close_connection(GSocketConnection *connection, gboolean keep_open);
+
+static void drd_rdp_listener_cleanup_peer(freerdp_peer *peer,
+                                          GSocketConnection *connection,
+                                          gboolean keep_open);
+
 struct _DrdRdpListener
 {
     GSocketService parent_instance;
@@ -1032,6 +1038,45 @@ drd_rdp_listener_accept_peer(DrdRdpListener *self,
 }
 
 /*
+ * 功能：统一关闭或释放 GLib socket 连接。
+ * 逻辑：根据 keep_open 决定是否关闭 IO stream，最后释放引用。
+ * 参数：connection 套接字连接；keep_open 是否保持连接打开。
+ * 外部接口：GLib g_io_stream_close/g_object_unref。
+ */
+static void
+drd_rdp_listener_close_connection(GSocketConnection *connection, gboolean keep_open)
+{
+    if (connection == NULL || !G_IS_SOCKET_CONNECTION(connection))
+    {
+        return;
+    }
+
+    if (!keep_open)
+    {
+        g_io_stream_close(G_IO_STREAM(connection), NULL, NULL);
+    }
+    g_object_unref(connection);
+}
+
+/*
+ * 功能：统一回收 peer 与关联连接的失败分支。
+ * 逻辑：释放 peer 后复用连接关闭逻辑，减少重复代码。
+ * 参数：peer FreeRDP peer；connection 套接字连接；keep_open 是否保持连接打开。
+ * 外部接口：freerdp_peer_free。
+ */
+static void
+drd_rdp_listener_cleanup_peer(freerdp_peer *peer,
+                              GSocketConnection *connection,
+                              gboolean keep_open)
+{
+    if (peer != NULL)
+    {
+        freerdp_peer_free(peer);
+    }
+    drd_rdp_listener_close_connection(connection, keep_open);
+}
+
+/*
  * 功能：处理新的 socket 连接，构造 peer 并交由 accept_peer。
  * 逻辑：生成对端描述，按需求保持连接打开，创建 FreeRDP peer；若接受成功可调用 session 回调；
  *       根据 keep_open 决定是否立即关闭 GLib 连接。
@@ -1052,19 +1097,13 @@ drd_rdp_listener_handle_connection(DrdRdpListener *self,
     freerdp_peer *peer = drd_rdp_listener_peer_from_connection(connection, error);
     if (peer == NULL)
     {
-        g_io_stream_close(G_IO_STREAM(connection), NULL, NULL);
-        g_object_unref(connection);
+        drd_rdp_listener_close_connection(connection, FALSE);
         return FALSE;
     }
 
     if (!drd_rdp_listener_accept_peer(self, peer, peer_name))
     {
-        freerdp_peer_free(peer);
-        if (!keep_open)
-        {
-            g_io_stream_close(G_IO_STREAM(connection), NULL, NULL);
-        }
-        g_object_unref(connection);
+        drd_rdp_listener_cleanup_peer(peer, connection, keep_open);
         return FALSE;
     }
 
@@ -1077,11 +1116,7 @@ drd_rdp_listener_handle_connection(DrdRdpListener *self,
         }
     }
 
-    if (!keep_open)
-    {
-        g_io_stream_close(G_IO_STREAM(connection), NULL, NULL);
-    }
-    g_object_unref(connection);
+    drd_rdp_listener_close_connection(connection, keep_open);
 
     return TRUE;
 }
