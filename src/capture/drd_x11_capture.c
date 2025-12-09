@@ -61,6 +61,12 @@ static void drd_x11_capture_close_wakeup_pipe(DrdX11Capture *self);
 
 static void drd_x11_capture_drain_wakeup_pipe(int fd);
 
+/*
+ * 功能：释放 X11 捕获实例持有的资源。
+ * 逻辑：调用 stop 确保线程退出；清理 display 名称与帧队列引用，最后交由父类 dispose。
+ * 参数：object 基类指针，期望为 DrdX11Capture。
+ * 外部接口：GLib g_clear_pointer/g_clear_object 释放资源，最终调用 GObjectClass::dispose。
+ */
 static void
 drd_x11_capture_dispose(GObject *object)
 {
@@ -74,6 +80,12 @@ drd_x11_capture_dispose(GObject *object)
     G_OBJECT_CLASS(drd_x11_capture_parent_class)->dispose(object);
 }
 
+/*
+ * 功能：清理互斥锁等基础资源。
+ * 逻辑：销毁 state_mutex，然后调用父类 finalize 完成剩余释放。
+ * 参数：object 基类指针。
+ * 外部接口：GLib g_mutex_clear。
+ */
 static void
 drd_x11_capture_finalize(GObject *object)
 {
@@ -82,6 +94,12 @@ drd_x11_capture_finalize(GObject *object)
     G_OBJECT_CLASS(drd_x11_capture_parent_class)->finalize(object);
 }
 
+/*
+ * 功能：初始化类回调，挂载 dispose/finalize。
+ * 逻辑：将自定义释放函数设置到 GObjectClass。
+ * 参数：klass 类结构。
+ * 外部接口：依赖 GLib 类型系统完成类初始化。
+ */
 static void
 drd_x11_capture_class_init(DrdX11CaptureClass *klass)
 {
@@ -90,6 +108,12 @@ drd_x11_capture_class_init(DrdX11CaptureClass *klass)
     object_class->finalize = drd_x11_capture_finalize;
 }
 
+/*
+ * 功能：初始化实例字段。
+ * 逻辑：初始化互斥锁与共享内存标记，置运行状态与唤醒管道为未激活。
+ * 参数：self 捕获实例。
+ * 外部接口：GLib g_mutex_init、C 库 memset。
+ */
 static void
 drd_x11_capture_init(DrdX11Capture *self)
 {
@@ -101,6 +125,12 @@ drd_x11_capture_init(DrdX11Capture *self)
     self->wakeup_pipe[1] = -1;
 }
 
+/*
+ * 功能：创建 X11 捕获对象并绑定输出队列。
+ * 逻辑：校验队列类型后创建对象并持有队列引用。
+ * 参数：queue 捕获帧输出队列。
+ * 外部接口：GLib g_object_new/g_object_ref。
+ */
 DrdX11Capture *
 drd_x11_capture_new(DrdFrameQueue *queue)
 {
@@ -111,6 +141,12 @@ drd_x11_capture_new(DrdFrameQueue *queue)
     return self;
 }
 
+/*
+ * 功能：打开 X11 连接并准备共享内存截图资源。
+ * 逻辑：依次打开 Display，检测 XShm/XDamage 扩展；获取屏幕/root 窗口与目标尺寸；创建 XShm 图像与共享内存段并附加；创建 Damage 句柄。
+ * 参数：self 捕获实例；display_name 显示名称；requested_width/height 期望尺寸；error 错误输出。
+ * 外部接口：X11/XShm/XDamage 相关 API：XOpenDisplay 打开连接；XShmQueryExtension/XDamageQueryExtension 检查扩展；XShmCreateImage 创建共享内存图像；shmget/shmat 创建并附加 SysV 共享内存；XShmAttach 绑定共享内存到 X 服务器；XDamageCreate 注册屏幕损坏事件；XSync 刷新事件队列。
+ */
 static gboolean
 drd_x11_capture_prepare_display(DrdX11Capture *self,
                                 const gchar *display_name,
@@ -222,6 +258,12 @@ drd_x11_capture_prepare_display(DrdX11Capture *self,
     return TRUE;
 }
 
+/*
+ * 功能：启动 X11 捕获线程并准备资源。
+ * 逻辑：持锁检查运行状态；记录 display 名称；创建唤醒管道并准备显示资源；成功后标记 running 并启动线程。
+ * 参数：self 捕获实例；display_name 目标显示；requested_width/height 期望尺寸；error 错误输出。
+ * 外部接口：GLib g_mutex_lock/unlock、g_thread_new 创建线程；内部调用 drd_x11_capture_setup_wakeup_pipe 与 drd_x11_capture_prepare_display，日志通过 DRD_LOG_MESSAGE。
+ */
 gboolean
 drd_x11_capture_start(DrdX11Capture *self,
                       const gchar *display_name,
@@ -270,6 +312,12 @@ drd_x11_capture_start(DrdX11Capture *self,
     return TRUE;
 }
 
+/*
+ * 功能：清理 X11 捕获持有的底层资源（需持锁调用）。
+ * 逻辑：销毁 Damage 句柄；卸载共享内存与图像；分离并回收 SysV 共享内存；关闭 X Display。
+ * 参数：self 捕获实例。
+ * 外部接口：XDamageDestroy/XShmDetach/XDestroyImage/shmdt/shmctl/XCloseDisplay 等 X11 与 SysV 共享内存 API。
+ */
 static void
 drd_x11_capture_cleanup_locked(DrdX11Capture *self)
 {
@@ -312,6 +360,12 @@ drd_x11_capture_cleanup_locked(DrdX11Capture *self)
     }
 }
 
+/*
+ * 功能：停止捕获线程并回收资源。
+ * 逻辑：持锁检查 running；清除运行标志，先尝试唤醒阻塞线程，再 join 线程；随后持锁调用 cleanup 与关闭唤醒管道，最后记录日志。
+ * 参数：self 捕获实例。
+ * 外部接口：XSync 同步 X 连接；write 唤醒管道；GLib g_thread_join/g_mutex；日志 DRD_LOG_MESSAGE。
+ */
 void
 drd_x11_capture_stop(DrdX11Capture *self)
 {
@@ -356,6 +410,12 @@ drd_x11_capture_stop(DrdX11Capture *self)
     DRD_LOG_MESSAGE("X11 capture stopped");
 }
 
+/*
+ * 功能：查询捕获线程是否运行。
+ * 逻辑：持锁读取 running 标志并返回。
+ * 参数：self 捕获实例。
+ * 外部接口：GLib g_mutex_lock/unlock。
+ */
 gboolean
 drd_x11_capture_is_running(DrdX11Capture *self)
 {
@@ -367,6 +427,12 @@ drd_x11_capture_is_running(DrdX11Capture *self)
     return running;
 }
 
+/*
+ * 功能：捕获线程主循环，从 X11 拉帧并写入队列。
+ * 逻辑：循环读取运行状态与资源；消费 XDamage 事件决定是否抓帧；按 target_interval 结合 damage_pending 节流；在等待时用 g_poll 监听 X 连接和唤醒管道；抓帧时通过 XShmGetImage 复制像素到 DrdFrame 并推入队列。
+ * 参数：user_data 线程参数，DrdX11Capture 实例。
+ * 外部接口：XPending/XNextEvent/XDamageSubtract 处理 Damage 事件；g_poll 监听文件描述符；XShmGetImage 抓帧；glib 时间函数 g_get_monotonic_time/g_usleep；DrdFrame API drd_frame_new/configure/ensure_capacity 与 drd_frame_queue_push；日志 DRD_LOG_MESSAGE/DRD_LOG_WARNING。
+ */
 static gpointer
 drd_x11_capture_thread(gpointer user_data)
 {
@@ -504,6 +570,12 @@ drd_x11_capture_thread(gpointer user_data)
     return NULL;
 }
 
+/*
+ * 功能：创建唤醒管道供线程退出时使用。
+ * 逻辑：若已有管道直接返回；否则通过 g_unix_open_pipe 创建带 CLOEXEC 标志的管道并缓存 fd。
+ * 参数：self 捕获实例；error 错误输出。
+ * 外部接口：glib-unix g_unix_open_pipe 创建管道。
+ */
 static gboolean
 drd_x11_capture_setup_wakeup_pipe(DrdX11Capture *self, GError **error)
 {
@@ -523,6 +595,12 @@ drd_x11_capture_setup_wakeup_pipe(DrdX11Capture *self, GError **error)
     return TRUE;
 }
 
+/*
+ * 功能：关闭并清理唤醒管道 fd。
+ * 逻辑：遍历两个 fd，若有效则 close 并置为 -1。
+ * 参数：self 捕获实例。
+ * 外部接口：POSIX close。
+ */
 static void
 drd_x11_capture_close_wakeup_pipe(DrdX11Capture *self)
 {
@@ -536,6 +614,12 @@ drd_x11_capture_close_wakeup_pipe(DrdX11Capture *self)
     }
 }
 
+/*
+ * 功能：清空唤醒管道中的残留数据。
+ * 逻辑：若 fd 有效则循环读取直到无数据。
+ * 参数：fd 管道读端。
+ * 外部接口：POSIX read。
+ */
 static void
 drd_x11_capture_drain_wakeup_pipe(int fd)
 {

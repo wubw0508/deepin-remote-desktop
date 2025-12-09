@@ -1,5 +1,15 @@
 # 变更记录
 
+## 2025-12-09：capture/core/security/system 注释对齐 encoding 规范
+- **目的**：为核心运行时、采集、安全与 system 守护模块补充与 encoding 模块一致的中文注释格式，明确功能、逻辑、参数及外部库调用。
+- **范围**：`src/capture/*.c`、`src/core/*.c`、`src/security/*.c`、`src/system/*.c`、`.codex/plan/comment-capture-core-security-system.md`。
+- **主要改动**：
+  1. `DrdCaptureManager`、`DrdX11Capture` 补充捕获启动/节流/唤醒管道等流程注释，标注 XDamage/XShm 与 GLib 线程/管道接口。
+  2. `drd_application`、`drd_config`、`drd_server_runtime` 增加配置解析、TLS/NLA 校验、流启动与传输模式切换的中文说明，覆盖 g_option/GDBus/GLib 原子操作调用点。
+  3. `drd_local_session`、`drd_nla_sam`、`drd_tls_credentials` 记录 PAM/WinPR/FreeRDP 的交互接口，说明凭据加载、哈希生成与 PEM 注入 FreeRDP settings 的流程。
+  4. `drd_handover_daemon`、`drd_system_daemon` 描述 handover/system DBus 信号、routing token 分配、连接接管与 LightDM 远程 display 创建路径，明确 g_bus_own_name、DBus skeleton 导出与连接元数据的使用。
+- **影响**：提升跨模块代码可读性与外部库交互透明度，无行为改动，为后续维护和排障提供统一注释格式。
+
 ## 2025-12-08：RDP 监听器失败清理收敛
 - **目的**：统一 `DrdRdpListener` 的失败清理逻辑，减少连接关闭与 peer 释放的重复分支，降低遗漏风险。
 - **范围**：`src/transport/drd_rdp_listener.c`、`doc/architecture.md`、`.codex/plan/rdp_listener_cleanup.md`。

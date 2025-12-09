@@ -30,7 +30,12 @@ struct _DrdApplication
 
 G_DEFINE_TYPE(DrdApplication, drd_application, G_TYPE_OBJECT)
 
-/* 将编码模式转换成便于日志输出的字符串。 */
+/*
+ * 功能：将编码模式转换为日志友好的字符串。
+ * 逻辑：依据枚举返回对应字面量，未知模式返回 "unknown"。
+ * 参数：mode 编码模式。
+ * 外部接口：无额外外部库调用。
+ */
 static const gchar *
 drd_application_mode_to_string(DrdEncodingMode mode)
 {
@@ -45,6 +50,12 @@ drd_application_mode_to_string(DrdEncodingMode mode)
     }
 }
 
+/*
+ * 功能：将运行模式转为字符串。
+ * 逻辑：根据枚举返回 system/handover/user 文本，默认 user。
+ * 参数：mode 运行模式。
+ * 外部接口：无额外外部库调用。
+ */
 static const gchar *
 drd_application_runtime_mode_to_string(DrdRuntimeMode mode)
 {
@@ -70,7 +81,12 @@ typedef struct
     DrdRuntimeMode runtime_mode;
 } DrdRuntimeContextSnapshot;
 
-/* 记录当前合并后的核心运行参数，帮助排查配置生效情况。 */
+/*
+ * 功能：输出当前生效的编码与运行模式配置。
+ * 逻辑：读取配置中的编码选项与运行模式，分别记录分辨率、编码模式、差分开关、NLA 与 PAM 服务名。
+ * 参数：self 应用实例。
+ * 外部接口：依赖 drd_config_* 获取配置，日志通过 DRD_LOG_MESSAGE。
+ */
 static void
 drd_application_log_effective_config(DrdApplication *self)
 {
@@ -98,7 +114,12 @@ drd_application_log_effective_config(DrdApplication *self)
                     drd_config_get_pam_service(self->config));
 }
 
-/* 释放主循环、监听器等运行期资源，确保干净退出。 */
+/*
+ * 功能：释放应用持有的运行期资源。
+ * 逻辑：移除信号源；停止监听器与运行时；释放模式控制器、TLS 凭据与配置对象；释放主循环引用；最后交由父类 dispose。
+ * 参数：object 基类指针，期望为 DrdApplication。
+ * 外部接口：GLib g_source_remove/g_clear_object/g_clear_pointer，调用 drd_rdp_listener_stop、drd_server_runtime_stop 关闭子模块。
+ */
 static void
 drd_application_dispose(GObject *object)
 {
@@ -141,7 +162,12 @@ drd_application_dispose(GObject *object)
     G_OBJECT_CLASS(drd_application_parent_class)->dispose(object);
 }
 
-/* 最终清理阶段，释放剩余引用。 */
+/*
+ * 功能：最终清理阶段释放残余引用。
+ * 逻辑：清理配置对象引用后调用父类 finalize。
+ * 参数：object 基类指针。
+ * 外部接口：GLib g_clear_object，GObjectClass::finalize。
+ */
 static void
 drd_application_finalize(GObject *object)
 {
@@ -150,6 +176,12 @@ drd_application_finalize(GObject *object)
     G_OBJECT_CLASS(drd_application_parent_class)->finalize(object);
 }
 
+/*
+ * 功能：异步退出主循环的辅助函数。
+ * 逻辑：调用 g_main_loop_quit 并移除超时源。
+ * 参数：user_data 主循环指针。
+ * 外部接口：GLib g_main_loop_quit。
+ */
 static gboolean
 quit_loop(gpointer user_data)
 {
@@ -157,7 +189,12 @@ quit_loop(gpointer user_data)
     return G_SOURCE_REMOVE;
 }
 
-/* 信号回调：收到终止信号时请求主循环退出。 */
+/*
+ * 功能：Unix 信号回调，触发主循环退出。
+ * 逻辑：若主循环运行中且非 handover 模式则立刻退出；handover 模式下延迟 5 秒退出并记录日志。
+ * 参数：user_data 应用实例。
+ * 外部接口：GLib g_main_loop_is_running/g_timeout_add，DRD_LOG_MESSAGE；依赖 g_unix_signal_add 注册的回调。
+ */
 static gboolean
 drd_application_on_signal(gpointer user_data)
 {
@@ -176,6 +213,12 @@ drd_application_on_signal(gpointer user_data)
     return G_SOURCE_CONTINUE;
 }
 
+/*
+ * 功能：准备运行时依赖（配置、TLS、编码选项）并可选记录快照。
+ * 逻辑：加载/创建配置；校验 TLS 路径与 NLA/PAM 账户；按模式创建或加载 TLS 凭据并注入 runtime；提取编码选项写入 runtime；填充 snapshot 供后续创建监听器或守护进程。
+ * 参数：self 应用实例；snapshot 可选输出的上下文快照；error 错误输出。
+ * 外部接口：调用 drd_config_* 读取配置、drd_tls_credentials_new/drd_tls_credentials_new_empty 加载 TLS，drd_server_runtime_set_tls_credentials/set_encoding_options 注入运行时；错误通过 GLib g_set_error_literal。
+ */
 static gboolean
 drd_application_prepare_runtime(DrdApplication *self,
                                 DrdRuntimeContextSnapshot *snapshot,
@@ -283,7 +326,12 @@ drd_application_prepare_runtime(DrdApplication *self,
     return TRUE;
 }
 
-/* 启动 RDP 监听器，并将 TLS、编码运行时串联起来。 */
+/*
+ * 功能：在 user 模式下启动 RDP 监听器。
+ * 逻辑：准备运行时上下文；创建监听器并绑定编码/NLA/TLS 参数；启动监听失败则清理 runtime。
+ * 参数：self 应用实例；error 错误输出。
+ * 外部接口：drd_application_prepare_runtime、drd_rdp_listener_new/drd_rdp_listener_start 进行 FreeRDP 监听，drd_server_runtime_stop 关闭运行时。
+ */
 static gboolean
 drd_application_start_listener(DrdApplication *self, GError **error)
 {
@@ -325,6 +373,12 @@ drd_application_start_listener(DrdApplication *self, GError **error)
     return TRUE;
 }
 
+/*
+ * 功能：在 system 模式下启动守护进程控制器。
+ * 逻辑：准备运行时上下文；创建 system 守护并绑定主循环；启动失败则清理控制器。
+ * 参数：self 应用实例；error 错误输出。
+ * 外部接口：drd_system_daemon_new/drd_system_daemon_set_main_loop/drd_system_daemon_start，GLib g_clear_object；错误通过 g_set_error_literal。
+ */
 static gboolean
 drd_application_start_system_daemon(DrdApplication *self, GError **error)
 {
@@ -367,6 +421,12 @@ drd_application_start_system_daemon(DrdApplication *self, GError **error)
     return TRUE;
 }
 
+/*
+ * 功能：在 handover 模式下启动交接守护进程。
+ * 逻辑：准备运行时上下文；创建 handover 守护并挂接主循环；启动失败则释放控制器。
+ * 参数：self 应用实例；error 错误输出。
+ * 外部接口：drd_handover_daemon_new/drd_handover_daemon_set_main_loop/drd_handover_daemon_start，GLib g_clear_object；错误通过 g_set_error_literal。
+ */
 static gboolean
 drd_application_start_handover_daemon(DrdApplication *self, GError **error)
 {
@@ -409,7 +469,12 @@ drd_application_start_handover_daemon(DrdApplication *self, GError **error)
     return TRUE;
 }
 
-/* 解析 CLI 选项，并与配置文件合并。 */
+/*
+ * 功能：解析命令行参数并与配置文件合并。
+ * 逻辑：构建 GOptionEntry 解析 CLI；防止互斥选项组合；加载配置文件或使用默认配置；按 CLI 覆盖配置项并校验权限（system 模式需 root）。
+ * 参数：self 应用实例；argc/argv 命令行参数；error 错误输出。
+ * 外部接口：GLib GOptionContext 解析选项；drd_config_new_from_file/drd_config_merge_cli 读取与合并；geteuid 校验权限；日志 DRD_LOG_MESSAGE。
+ */
 static gboolean
 drd_application_parse_options(DrdApplication *self, gint *argc, gchar ***argv, GError **error)
 {
@@ -610,7 +675,12 @@ drd_application_parse_options(DrdApplication *self, gint *argc, gchar ***argv, G
     return TRUE;
 }
 
-/* 初始化对象默认值。 */
+/*
+ * 功能：初始化应用实例默认状态。
+ * 逻辑：创建配置与运行时对象，初始化日志，调用 WinPR 初始化 SSL 支持。
+ * 参数：self 应用实例。
+ * 外部接口：drd_config_new、drd_server_runtime_new、drd_log_init；WinPR winpr_InitializeSSL 初始化 SSL 堆栈。
+ */
 static void
 drd_application_init(DrdApplication *self)
 {
@@ -625,7 +695,12 @@ drd_application_init(DrdApplication *self)
     }
 }
 
-/* 绑定类虚函数。 */
+/*
+ * 功能：绑定类级别的虚函数。
+ * 逻辑：将自定义 dispose/finalize 挂载到 GObjectClass。
+ * 参数：klass 类结构。
+ * 外部接口：GLib 类型系统。
+ */
 static void
 drd_application_class_init(DrdApplicationClass *klass)
 {
@@ -634,14 +709,24 @@ drd_application_class_init(DrdApplicationClass *klass)
     object_class->finalize = drd_application_finalize;
 }
 
-/* 对外构造函数。 */
+/*
+ * 功能：创建应用实例。
+ * 逻辑：委托 g_object_new 分配并初始化对象。
+ * 参数：无。
+ * 外部接口：GLib g_object_new。
+ */
 DrdApplication *
 drd_application_new(void)
 {
     return g_object_new(DRD_TYPE_APPLICATION, NULL);
 }
 
-/* 应用入口：解析参数、启动监听、运行主循环。 */
+/*
+ * 功能：应用入口，负责解析参数、启动相应模式并运行主循环。
+ * 逻辑：先解析 CLI；输出生效配置；创建主循环并注册 SIGINT/SIGTERM；按运行模式启动监听器或守护；运行主循环并返回退出码。
+ * 参数：self 应用实例；argc/argv 命令行参数；error 错误输出。
+ * 外部接口：g_option_context、g_main_loop_new/run、g_unix_signal_add 注册信号；drd_application_start_listener/drd_application_start_system_daemon/drd_application_start_handover_daemon 启动子模块；日志 DRD_LOG_MESSAGE。
+ */
 int
 drd_application_run(DrdApplication *self, int argc, char **argv, GError **error)
 {
