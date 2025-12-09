@@ -38,7 +38,7 @@
 13. 客户端多屏场景；
 14. 远程登录中polkit在远程会话下的支持，可能需要批量进行覆盖，通过pkla和rules；
 15. systemd 服务配置；
-16. 分辨率切换时，应该发 redirect pdu 让客户端重连；
+16. 桌面共享分辨率切换时，应该发 redirect pdu 让客户端重连；
 17. 多会话和会话重入管理：
     1.  lightdm remote session 需要sessionid和clientid；需要给出一个详细的方案
     2.  system监听remote session的sessionid change信号，system进程的object不变，dm的session可以变；
@@ -47,7 +47,9 @@
     5.  多个会话开启桌面共享时，端口号自动累加；
 18. greeter 第一帧显示是黑的或者花的，可能需要让 system 进程先传一帧
 19. 光标处理，目前在客户端看到的光标不会变化；
-20. 桌面共享多会话场景
+20. 桌面共享多会话场景；
+21. greeter 切换用户时，允许切换到已经登录的用户上；
+22. 桌面共享暂停场景；
 
 #### other
 

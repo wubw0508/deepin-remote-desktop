@@ -586,7 +586,7 @@ rdp_sso=false
 - drd-system 进程的运行用户为 deepin-system-daemon（非 root），并遵循 DBus/systemd 安全规范配置相关参数。
 
 == 性能
-- **事件驱动的帧采集**：订阅 XDamage，只有检测到脏矩形才触发 XShm 拷贝，并使用只保留一帧的 `DrdFrameQueue` 把最新像素交给 runtime，避免积压造成额外内存占用。
+- **事件驱动的帧采集**：订阅 XDamage，只有检测到脏矩形才触发 XShm 拷贝，并使用3帧环形缓冲的 `DrdFrameQueue` 把最新像素交给 runtime，避免积压造成额外内存占用。
 - **单帧编码管线**：在 renderer 线程内直接完成编码，确保 `freerdp_peer` 与 capture 线程之间只有一次 memcpy。
 - **瓦片差分 + codec 自适应**：编码器默认生成 64×64 tile 的差分区域，与 Rdpgfx Progressive/RFX 阶段性数据完全对齐，通过哈希 + 按需逐行比较的方式避开整帧 memcmp，减少冗余编码。
 - **背压与批次控制**：精准控制推流速率，只有客户端回传 FrameAcknowledge 才继续发送，杜绝“编码完成却因未 ACK 被丢弃”的浪费。SurfaceBits 回退策略会依据客户端的 `negotiated_max_payload` 拆包，遵循 mstsc/FreeRDP 的最优 payload。
