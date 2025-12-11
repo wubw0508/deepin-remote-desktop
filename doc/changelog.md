@@ -1,5 +1,15 @@
 # 变更记录
 
+## 2025-12-11：X11 捕获帧率观测
+- **目的**：在捕获线程中输出实际帧率，并提示是否达到设定目标，便于线上定位性能瓶颈。
+- **范围**：`src/capture/drd_x11_capture.c`、`src/session/drd_rdp_session.c`、`doc/architecture.md`、`.codex/plan/x11capture-fps.md`。
+- **主要改动**：
+  1. 捕获线程引入 5 秒统计窗口，累计帧数计算实际 fps，并记录是否达到 60fps 目标。
+  2. 渲染/发送线程新增 5 秒窗口统计，仅在帧实际发送成功（Rdpgfx 或 SurfaceBits）时计数，日志对比目标帧率。
+  3. 目标帧率与统计窗口改为配置驱动，支持环境变量 `DRD_CAPTURE_TARGET_FPS`、`DRD_CAPTURE_STATS_INTERVAL_SEC`，捕获与渲染共用同一配置源。
+  4. 架构文档更新采集层与 renderer 协作章节，mermaid 图补充 FPS 统计节点，计划文件标记执行进度。
+- **影响**：运行时可直接通过日志分别观察采集与发送帧率是否达标，为调优提供数据支撑，现有捕获/节流/队列行为不变。
+
 ## 2025-12-10：编码帧 payload 封装
 - **目的**：消除外部对 `DrdEncodedFrame` 内部 payload 指针的直接操作，集中管理编码结果写入，降低遗漏长度同步的风险。
 - **范围**：`src/utils/drd_encoded_frame.*`、`src/encoding/drd_raw_encoder.c`、`src/encoding/drd_rfx_encoder.c`、`doc/architecture.md`、`.codex/plan/drd_encoded_frame_payload_encapsulation.md`。

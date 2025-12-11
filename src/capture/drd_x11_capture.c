@@ -16,6 +16,7 @@
 #include <sys/shm.h>
 #include <unistd.h>
 
+#include "utils/drd_capture_metrics.h"
 #include "utils/drd_frame.h"
 #include "utils/drd_log.h"
 
@@ -438,8 +439,12 @@ drd_x11_capture_thread(gpointer user_data)
 {
     DrdX11Capture *self = DRD_X11_CAPTURE(user_data);
 
-    const gint64 target_interval = G_USEC_PER_SEC / 60;
+    const guint target_fps = drd_capture_metrics_get_target_fps();
+    const gint64 target_interval = drd_capture_metrics_get_target_interval_us();
+    const gint64 stats_interval = drd_capture_metrics_get_stats_interval_us();
     gint64 last_capture = 0;
+    gint64 stats_window_start = 0;
+    guint stats_frames = 0;
     gboolean damage_pending = TRUE; /* 首帧直接抓取，之后仅在 damage 或等待到期后捕获 */
 
     while (TRUE)
@@ -560,6 +565,28 @@ drd_x11_capture_thread(gpointer user_data)
         {
             memcpy(buffer, image->data, frame_size);
             drd_frame_queue_push(self->queue, frame);
+        }
+
+        stats_frames++;
+        if (stats_window_start == 0)
+        {
+            stats_window_start = now;
+        }
+        else
+        {
+            const gint64 stats_elapsed = now - stats_window_start;
+            if (stats_elapsed >= stats_interval)
+            {
+                const gdouble actual_fps =
+                    (gdouble) stats_frames * (gdouble) G_USEC_PER_SEC / (gdouble) stats_elapsed;
+                const gboolean reached_target = actual_fps >= (gdouble) target_fps;
+                DRD_LOG_MESSAGE("X11 capture fps=%.2f (target=%u): %s",
+                                actual_fps,
+                                target_fps,
+                                reached_target ? "reached target" : "below target");
+                stats_frames = 0;
+                stats_window_start = now;
+            }
         }
 
         damage_pending = FALSE;

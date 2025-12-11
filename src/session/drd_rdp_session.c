@@ -20,6 +20,7 @@
 #include <winpr/string.h>
 
 #include "core/drd_server_runtime.h"
+#include "utils/drd_capture_metrics.h"
 #include "utils/drd_log.h"
 #include "session/drd_rdp_graphics_pipeline.h"
 #include "security/drd_local_session.h"
@@ -69,7 +70,8 @@ static gboolean drd_rdp_session_send_surface_bits(DrdRdpSession *self,
 static gpointer drd_rdp_session_vcm_thread(gpointer user_data);
 
 static gboolean drd_rdp_session_try_submit_graphics(DrdRdpSession *self,
-                                                    DrdEncodedFrame *frame);
+                                                    DrdEncodedFrame *frame,
+                                                    gboolean *out_sent);
 
 static void drd_rdp_session_maybe_init_graphics(DrdRdpSession *self);
 
@@ -1166,6 +1168,11 @@ drd_rdp_session_render_thread(gpointer user_data)
 {
     DrdRdpSession *self = DRD_RDP_SESSION(user_data);
 
+    const guint target_fps = drd_capture_metrics_get_target_fps();
+    const gint64 stats_interval = drd_capture_metrics_get_stats_interval_us();
+    guint stats_frames = 0;
+    gint64 stats_window_start = 0;
+
     while (g_atomic_int_get(&self->render_running))
     {
         if (!g_atomic_int_get(&self->connection_alive))
@@ -1219,8 +1226,13 @@ drd_rdp_session_render_thread(gpointer user_data)
 
         g_autoptr(DrdEncodedFrame) owned_frame = encoded;
 
-        gboolean sent_via_graphics = drd_rdp_session_try_submit_graphics(self, owned_frame);
-        if (!sent_via_graphics)
+        gboolean sent = FALSE;
+        gboolean sent_via_graphics = FALSE;
+        gboolean handled_by_graphics =
+                drd_rdp_session_try_submit_graphics(self, owned_frame, &sent_via_graphics);
+        sent = sent_via_graphics;
+
+        if (!handled_by_graphics)
         {
             guint32 negotiated_max_payload =
                     (guint32) g_atomic_int_get(&self->max_surface_payload);
@@ -1235,11 +1247,15 @@ drd_rdp_session_render_thread(gpointer user_data)
                           self->peer_address,
                           negotiated_max_payload);
             g_autoptr(GError) send_error = NULL;
-            if (!drd_rdp_session_send_surface_bits(self,
-                                                   owned_frame,
-                                                   self->frame_sequence,
-                                                   negotiated_max_payload,
-                                                   &send_error))
+            if (drd_rdp_session_send_surface_bits(self,
+                                                  owned_frame,
+                                                  self->frame_sequence,
+                                                  negotiated_max_payload,
+                                                  &send_error))
+            {
+                sent = TRUE;
+            }
+            else
             {
                 if (send_error != NULL)
                 {
@@ -1247,6 +1263,31 @@ drd_rdp_session_render_thread(gpointer user_data)
                                     self->peer_address,
                                     send_error->message);
                 }
+            }
+        }
+
+        if (sent)
+        {
+            const gint64 now = g_get_monotonic_time();
+            if (stats_window_start == 0)
+            {
+                stats_window_start = now;
+            }
+            stats_frames++;
+
+            const gint64 elapsed = now - stats_window_start;
+            if (elapsed >= stats_interval)
+            {
+                const gdouble actual_fps =
+                        (gdouble) stats_frames * (gdouble) G_USEC_PER_SEC / (gdouble) elapsed;
+                const gboolean reached_target = actual_fps >= (gdouble) target_fps;
+                DRD_LOG_MESSAGE("Session %s render fps=%.2f (target=%u): %s",
+                                self->peer_address,
+                                actual_fps,
+                                target_fps,
+                                reached_target ? "reached target" : "below target");
+                stats_frames = 0;
+                stats_window_start = now;
             }
         }
 
@@ -1362,16 +1403,23 @@ drd_rdp_session_wait_for_graphics_capacity(DrdRdpSession *self,
  * 逻辑：若 runtime 或管线未就绪返回 FALSE；首次就绪时切换传输模式；
  *       非 Progressive 帧直接回退 SurfaceBits；在拥塞时等待容量或禁用管线；
  *       提交失败根据错误请求关键帧或关闭管线。
- * 参数：self 会话；frame 已编码帧。
+ * 参数：self 会话；frame 已编码帧；out_sent 输出是否成功提交（可为空）。
  * 外部接口：drd_rdp_graphics_pipeline_* 系列检查能力并提交帧，
  *           drd_server_runtime_request_keyframe 触发关键帧重编。
  */
 static gboolean
-drd_rdp_session_try_submit_graphics(DrdRdpSession *self, DrdEncodedFrame *frame)
+drd_rdp_session_try_submit_graphics(DrdRdpSession *self,
+                                    DrdEncodedFrame *frame,
+                                    gboolean *out_sent)
 {
     if (self->runtime == NULL)
     {
         return FALSE;
+    }
+
+    if (out_sent != NULL)
+    {
+        *out_sent = FALSE;
     }
 
     drd_rdp_session_maybe_init_graphics(self);
@@ -1448,6 +1496,10 @@ drd_rdp_session_try_submit_graphics(DrdRdpSession *self, DrdEncodedFrame *frame)
         return TRUE;
     }
 
+    if (out_sent != NULL)
+    {
+        *out_sent = TRUE;
+    }
     return TRUE;
 }
 

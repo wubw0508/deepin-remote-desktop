@@ -13,6 +13,7 @@
 #include "system/drd_system_daemon.h"
 #include "system/drd_handover_daemon.h"
 #include "utils/drd_log.h"
+#include "utils/drd_capture_metrics.h"
 
 struct _DrdApplication
 {
@@ -485,6 +486,8 @@ drd_application_parse_options(DrdApplication *self, gint *argc, gchar ***argv, G
     gchar *config_path = NULL;
     gint capture_width = 0;
     gint capture_height = 0;
+    gint capture_target_fps = 0;
+    gint capture_stats_interval_sec = 0;
     gchar *encoder_mode = NULL;
     gboolean enable_diff_flag = FALSE;
     gboolean disable_diff_flag = FALSE;
@@ -502,6 +505,16 @@ drd_application_parse_options(DrdApplication *self, gint *argc, gchar ***argv, G
         {"config", 'c', 0, G_OPTION_ARG_STRING, &config_path, "Configuration file path (ini)", "FILE"},
         {"width", 0, 0, G_OPTION_ARG_INT, &capture_width, "Capture width override", "PX"},
         {"height", 0, 0, G_OPTION_ARG_INT, &capture_height, "Capture height override", "PX"},
+        {"capture-fps", 0, 0, G_OPTION_ARG_INT, &capture_target_fps, "Capture target fps", "FPS"},
+        {
+            "capture-stats-sec",
+            0,
+            0,
+            G_OPTION_ARG_INT,
+            &capture_stats_interval_sec,
+            "Capture/render fps stats window seconds",
+            "SEC"
+        },
         {"encoder", 0, 0, G_OPTION_ARG_STRING, &encoder_mode, "Encoder mode (raw|rfx)", "MODE"},
         {"nla-username", 0, 0, G_OPTION_ARG_STRING, &nla_username, "NLA username for static mode", "USER"},
         {"nla-password", 0, 0, G_OPTION_ARG_STRING, &nla_password, "NLA password for static mode", "PASS"},
@@ -633,6 +646,8 @@ drd_application_parse_options(DrdApplication *self, gint *argc, gchar ***argv, G
                               capture_height,
                               encoder_mode,
                               diff_override,
+                              capture_target_fps,
+                              capture_stats_interval_sec,
                               error))
     {
         g_clear_pointer(&bind_address, g_free);
@@ -662,6 +677,9 @@ drd_application_parse_options(DrdApplication *self, gint *argc, gchar ***argv, G
         g_clear_pointer(&nla_password, g_free);
         return FALSE;
     }
+
+    drd_capture_metrics_apply_config(drd_config_get_capture_target_fps(self->config),
+                                     drd_config_get_capture_stats_interval_sec(self->config));
 
     g_clear_pointer(&bind_address, g_free);
     g_clear_pointer(&cert_path, g_free);

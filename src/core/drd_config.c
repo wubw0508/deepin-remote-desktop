@@ -21,6 +21,8 @@ struct _DrdConfig
     gchar *pam_service;
     gboolean pam_service_overridden;
     DrdEncodingOptions encoding;
+    guint capture_target_fps;
+    guint capture_stats_interval_sec;
 };
 
 G_DEFINE_TYPE(DrdConfig, drd_config, G_TYPE_OBJECT)
@@ -72,7 +74,7 @@ drd_config_class_init(DrdConfigClass *klass)
 
 /*
  * 功能：初始化配置对象的默认值。
- * 逻辑：设置默认监听地址/端口、编码分辨率与模式、NLA 与运行模式默认值，初始化 pam_service 并刷新 PAM 服务名。
+ * 逻辑：设置默认监听地址/端口、编码分辨率与模式、捕获帧率观测默认值、NLA 与运行模式默认值，初始化 pam_service 并刷新 PAM 服务名。
  * 参数：self 配置实例。
  * 外部接口：GLib g_strdup/g_get_current_dir 处理字符串与默认路径。
  */
@@ -92,6 +94,8 @@ drd_config_init(DrdConfig *self)
     self->runtime_mode = DRD_RUNTIME_MODE_USER;
     self->pam_service_overridden = FALSE;
     self->pam_service = NULL;
+    self->capture_target_fps = 60;
+    self->capture_stats_interval_sec = 5;
     drd_config_refresh_pam_service(self);
 }
 
@@ -372,6 +376,24 @@ drd_config_load_from_key_file(DrdConfig *self, GKeyFile *keyfile, GError **error
         }
     }
 
+    if (g_key_file_has_key(keyfile, "capture", "target_fps", NULL))
+    {
+        gint64 target_fps = g_key_file_get_integer(keyfile, "capture", "target_fps", NULL);
+        if (target_fps > 0)
+        {
+            self->capture_target_fps = (guint) target_fps;
+        }
+    }
+
+    if (g_key_file_has_key(keyfile, "capture", "stats_interval_sec", NULL))
+    {
+        gint64 stats_interval = g_key_file_get_integer(keyfile, "capture", "stats_interval_sec", NULL);
+        if (stats_interval > 0)
+        {
+            self->capture_stats_interval_sec = (guint) stats_interval;
+        }
+    }
+
     if (g_key_file_has_key(keyfile, "encoding", "mode", NULL))
     {
         g_autofree gchar *mode = g_key_file_get_string(keyfile, "encoding", "mode", NULL);
@@ -586,6 +608,8 @@ drd_config_merge_cli(DrdConfig *self,
                      gint height,
                      const gchar *encoder_mode,
                      gint diff_override,
+                     gint capture_target_fps,
+                     gint capture_stats_interval_sec,
                      GError **error)
 {
     g_return_val_if_fail(DRD_IS_CONFIG(self), FALSE);
@@ -679,6 +703,16 @@ drd_config_merge_cli(DrdConfig *self,
     if (diff_override != 0)
     {
         self->encoding.enable_frame_diff = diff_override > 0;
+    }
+
+    if (capture_target_fps > 0)
+    {
+        self->capture_target_fps = (guint) capture_target_fps;
+    }
+
+    if (capture_stats_interval_sec > 0)
+    {
+        self->capture_stats_interval_sec = (guint) capture_stats_interval_sec;
     }
 
     if (self->runtime_mode != DRD_RUNTIME_MODE_HANDOVER &&
@@ -866,6 +900,32 @@ drd_config_get_capture_height(DrdConfig *self)
 {
     g_return_val_if_fail(DRD_IS_CONFIG(self), 0);
     return self->encoding.height;
+}
+
+/*
+ * 功能：获取捕获目标帧率。
+ * 逻辑：类型检查后返回配置中的 target_fps。
+ * 参数：self 配置实例。
+ * 外部接口：无额外外部库。
+ */
+guint
+drd_config_get_capture_target_fps(DrdConfig *self)
+{
+    g_return_val_if_fail(DRD_IS_CONFIG(self), 60);
+    return self->capture_target_fps;
+}
+
+/*
+ * 功能：获取帧率统计窗口秒数。
+ * 逻辑：类型检查后返回 stats_interval_sec。
+ * 参数：self 配置实例。
+ * 外部接口：无额外外部库。
+ */
+guint
+drd_config_get_capture_stats_interval_sec(DrdConfig *self)
+{
+    g_return_val_if_fail(DRD_IS_CONFIG(self), 5);
+    return self->capture_stats_interval_sec;
 }
 
 /*

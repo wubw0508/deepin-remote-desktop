@@ -33,6 +33,8 @@ gboolean drd_config_merge_cli(DrdConfig *self,
                                gint height,
                                const gchar *encoder_mode,
                                gint diff_override,
+                               gint capture_target_fps,
+                               gint capture_stats_interval_sec,
                                GError **error);
 
 const gchar *drd_config_get_bind_address(DrdConfig *self);
@@ -46,6 +48,8 @@ DrdRuntimeMode drd_config_get_runtime_mode(DrdConfig *self);
 const gchar *drd_config_get_pam_service(DrdConfig *self);
 guint drd_config_get_capture_width(DrdConfig *self);
 guint drd_config_get_capture_height(DrdConfig *self);
+guint drd_config_get_capture_target_fps(DrdConfig *self);
+guint drd_config_get_capture_stats_interval_sec(DrdConfig *self);
 const DrdEncodingOptions *drd_config_get_encoding_options(DrdConfig *self);
 
 G_END_DECLS

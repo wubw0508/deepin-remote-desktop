@@ -27,7 +27,8 @@ media_sources = files(
   'input/drd_x11_input.c',
   'utils/drd_frame.c',
   'utils/drd_frame_queue.c',
-  'utils/drd_encoded_frame.c'
+  'utils/drd_encoded_frame.c',
+  'utils/drd_capture_metrics.c'
 )
 
 core_sources = files(
