@@ -1,5 +1,14 @@
 # 变更记录
 
+## 2025-12-15：X11 捕获按帧率驱动事件
+- **目的**：脱离 XDamage 事件频率限制，让捕获线程按目标帧率周期驱动事件消费与抓帧，避免合成器低频 damage 时帧率被压低。
+- **范围**：`src/capture/drd_x11_capture.c`、`doc/architecture.md`、`.codex/plan/x11-capture-event-driven.md`。
+- **主要改动**：
+  1. `drd_x11_capture_thread()` 改为以 `target_interval` 定时驱动，周期内消费 XDamage 事件并在到期必抓一帧，使用 `next_capture_deadline` 保持恒定节奏，同时保留 wakeup pipe 退出路径。
+  2. g_poll 等待窗口改为基于下一帧 deadline 计算，避免事件频率低时长期不抓帧；XDamage 只做队列清理，减轻合成器合并带来的帧率上限。
+  3. 架构文档更新采集层描述，记录按帧率驱动的行为与影响。
+- **影响**：实际捕获帧率不再受 XDamage 触发频率限制，在 damage 稀疏场景可接近目标 fps，但静止画面会增加重复帧拷贝，需关注 CPU/带宽开销。
+
 ## 2025-12-11：X11 捕获帧率观测
 - **目的**：在捕获线程中输出实际帧率，并提示是否达到设定目标，便于线上定位性能瓶颈。
 - **范围**：`src/capture/drd_x11_capture.c`、`src/session/drd_rdp_session.c`、`doc/architecture.md`、`.codex/plan/x11capture-fps.md`。

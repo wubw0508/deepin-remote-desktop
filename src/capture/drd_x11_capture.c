@@ -430,9 +430,9 @@ drd_x11_capture_is_running(DrdX11Capture *self)
 
 /*
  * 功能：捕获线程主循环，从 X11 拉帧并写入队列。
- * 逻辑：循环读取运行状态与资源；消费 XDamage 事件决定是否抓帧；按 target_interval 结合 damage_pending 节流；在等待时用 g_poll 监听 X 连接和唤醒管道；抓帧时通过 XShmGetImage 复制像素到 DrdFrame 并推入队列。
+ * 逻辑：循环读取运行状态与资源；按 target_interval 驱动一次事件消费与抓帧，期间用 g_poll 监听 X 连接和唤醒管道；每个间隔都会触发一次抓帧，XDamage 事件仅用于清理队列与统计，避免被合成器合并后的事件频率限制帧率。
  * 参数：user_data 线程参数，DrdX11Capture 实例。
- * 外部接口：XPending/XNextEvent/XDamageSubtract 处理 Damage 事件；g_poll 监听文件描述符；XShmGetImage 抓帧；glib 时间函数 g_get_monotonic_time/g_usleep；DrdFrame API drd_frame_new/configure/ensure_capacity 与 drd_frame_queue_push；日志 DRD_LOG_MESSAGE/DRD_LOG_WARNING。
+ * 外部接口：XPending/XNextEvent/XDamageSubtract 处理 Damage 事件；g_poll 监听文件描述符；XShmGetImage 抓帧；glib 时间函数 g_get_monotonic_time；DrdFrame API drd_frame_new/configure/ensure_capacity 与 drd_frame_queue_push；日志 DRD_LOG_MESSAGE/DRD_LOG_WARNING。
  */
 static gpointer
 drd_x11_capture_thread(gpointer user_data)
@@ -442,10 +442,10 @@ drd_x11_capture_thread(gpointer user_data)
     const guint target_fps = drd_capture_metrics_get_target_fps();
     const gint64 target_interval = drd_capture_metrics_get_target_interval_us();
     const gint64 stats_interval = drd_capture_metrics_get_stats_interval_us();
-    gint64 last_capture = 0;
     gint64 stats_window_start = 0;
     guint stats_frames = 0;
-    gboolean damage_pending = TRUE; /* 首帧直接抓取，之后仅在 damage 或等待到期后捕获 */
+    gint64 next_capture_deadline = 0;
+    gint64 now = 0;
 
     while (TRUE)
     {
@@ -457,6 +457,7 @@ drd_x11_capture_thread(gpointer user_data)
         guint height = 0;
         gboolean running;
         int wake_fd = -1;
+        gboolean damage = FALSE;
 
         g_mutex_lock(&self->state_mutex);
         running = self->running;
@@ -475,82 +476,62 @@ drd_x11_capture_thread(gpointer user_data)
             break;
         }
 
-        gboolean has_damage = FALSE;
+        if (next_capture_deadline == 0)
+        {
+            next_capture_deadline = g_get_monotonic_time();
+        }
+        GPollFD pfds[2];
+        nfds_t poll_count = 0;
+        int wake_index = -1;
+        const int connection_fd = XConnectionNumber(display);
+        pfds[poll_count].fd = connection_fd;
+        pfds[poll_count].events = G_IO_IN;
+        pfds[poll_count].revents = 0;
+        poll_count++;
+        if (wake_fd >= 0)
+        {
+            wake_index = poll_count;
+            pfds[poll_count].fd = wake_fd;
+            pfds[poll_count].events = G_IO_IN;
+            pfds[poll_count].revents = 0;
+            poll_count++;
+        }
+
+        gint poll_result = g_poll(pfds, poll_count,  target_interval/1000);
+        if (poll_result < 0)
+        {
+            continue;
+        }
+        if (poll_result > 0 && wake_index >= 0 && (pfds[wake_index].revents & G_IO_IN))
+        {
+            drd_x11_capture_drain_wakeup_pipe(wake_fd);
+        }
+
         while (XPending(display) > 0)
         {
             XEvent event;
             XNextEvent(display, &event);
             if (event.type == damage_event_base + XDamageNotify)
             {
-                has_damage = TRUE;
                 XDamageSubtract(display, self->damage, None, None);
+                damage = TRUE;
             }
         }
-
-        if (has_damage)
+        if (!damage)
+            continue;
+        now = g_get_monotonic_time();
+        if (now < next_capture_deadline)
         {
-            damage_pending = TRUE;
-        }
-
-        gint64 now = g_get_monotonic_time();
-        gint64 elapsed = (last_capture == 0) ? target_interval : (now - last_capture);
-        gboolean interval_elapsed = elapsed >= target_interval;
-
-        if (!interval_elapsed || !damage_pending)
-        {
-            gint64 remaining = interval_elapsed ? target_interval : (target_interval - elapsed);
-            if (remaining < 1000)
-            {
-                remaining = 1000;
-            }
-            else if (remaining > target_interval)
-            {
-                remaining = target_interval;
-            }
-
-            GPollFD pfds[2];
-            nfds_t poll_count = 0;
-            int wake_index = -1;
-            const int connection_fd = XConnectionNumber(display);
-            pfds[poll_count].fd = connection_fd;
-            pfds[poll_count].events = G_IO_IN;
-            pfds[poll_count].revents = 0;
-            poll_count++;
-            if (wake_fd >= 0)
-            {
-                wake_index = poll_count;
-                pfds[poll_count].fd = wake_fd;
-                pfds[poll_count].events = G_IO_IN;
-                pfds[poll_count].revents = 0;
-                poll_count++;
-            }
-
-            gint timeout_ms = (gint) (remaining / 1000);
-            if (timeout_ms < 1)
-            {
-                timeout_ms = 1;
-            }
-
-            gint poll_result = g_poll(pfds, poll_count, timeout_ms);
-            if (poll_result < 0)
-            {
-                continue;
-            }
-            if (poll_result > 0 && wake_index >= 0 && (pfds[wake_index].revents & G_IO_IN))
-            {
-                drd_x11_capture_drain_wakeup_pipe(wake_fd);
-            }
-
             continue;
         }
 
         if (!XShmGetImage(display, root, image, 0, 0, AllPlanes))
         {
             DRD_LOG_WARNING("XShmGetImage failed, retrying");
-            g_usleep((gulong) target_interval);
+            next_capture_deadline = now + target_interval;
             continue;
         }
-
+        stats_frames++;
         g_autoptr(DrdFrame) frame = drd_frame_new();
         now = g_get_monotonic_time();
         drd_frame_configure(frame,
@@ -567,7 +548,6 @@ drd_x11_capture_thread(gpointer user_data)
             drd_frame_queue_push(self->queue, frame);
         }
 
-        stats_frames++;
         if (stats_window_start == 0)
         {
             stats_window_start = now;
@@ -589,8 +569,11 @@ drd_x11_capture_thread(gpointer user_data)
             }
         }
 
-        damage_pending = FALSE;
-        last_capture = now;
+        next_capture_deadline += target_interval;
+        if (next_capture_deadline < now)
+        {
+            next_capture_deadline = now + target_interval;
+        }
     }
 
     g_object_unref(self);
