@@ -12,7 +12,8 @@ add_project_arguments([
   '-D_GNU_SOURCE',
   '-Wno-deprecated-declarations',
   '-Wno-error=pedantic',
-  '-Wno-unused-function'
+  '-Wno-unused-function',
+  '-Wno-unused-variable'
 ], language: 'c')
 
 cc = meson.get_compiler('c')
