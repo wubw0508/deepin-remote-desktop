@@ -859,8 +859,8 @@ drd_configure_peer_settings(DrdRdpListener *self, freerdp_peer *client, GError *
         !freerdp_settings_set_bool(settings, FreeRDP_RemoteFxImageCodec, TRUE) ||
         !freerdp_settings_set_bool(settings, FreeRDP_NSCodec, FALSE) ||
         !freerdp_settings_set_bool(settings, FreeRDP_GfxH264, TRUE) ||
-        !freerdp_settings_set_bool(settings, FreeRDP_GfxAVC444v2, TRUE) ||
-        !freerdp_settings_set_bool(settings, FreeRDP_GfxAVC444, TRUE) ||
+        !freerdp_settings_set_bool(settings, FreeRDP_GfxAVC444v2, FALSE) ||
+        !freerdp_settings_set_bool(settings, FreeRDP_GfxAVC444, FALSE) ||
         !freerdp_settings_set_bool(settings,FreeRDP_GfxProgressive,TRUE) ||
         !freerdp_settings_set_bool(settings,FreeRDP_GfxProgressiveV2,TRUE) ||
         !freerdp_settings_set_bool(settings,FreeRDP_SupportGraphicsPipeline,enable_graphics_pipeline) ||
