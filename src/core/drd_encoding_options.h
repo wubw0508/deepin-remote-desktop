@@ -15,6 +15,7 @@ typedef enum
 #define DRD_H264_DEFAULT_BITRATE 5000000
 #define DRD_H264_DEFAULT_FRAMERATE 60
 #define DRD_H264_DEFAULT_QP 15
+#define DRD_H264_DEFAULT_HW_ACCEL FALSE
 
 #define DRD_GFX_DEFAULT_LARGE_CHANGE_THRESHOLD 0.05
 #define DRD_GFX_DEFAULT_PROGRESSIVE_REFRESH_INTERVAL 6
@@ -47,6 +48,7 @@ typedef struct
     guint h264_bitrate;
     guint h264_framerate;
     guint h264_qp;
+    gboolean h264_hw_accel;
     gdouble gfx_large_change_threshold;
     guint gfx_progressive_refresh_interval;
     guint gfx_progressive_refresh_timeout_ms;

@@ -25,6 +25,7 @@ struct _DrdEncodingManager
     guint h264_bitrate;
     guint h264_framerate;
     guint h264_qp;
+    gboolean h264_hw_accel;
 
     guint32 codecs;
     H264_CONTEXT *h264;
@@ -97,6 +98,7 @@ static void drd_encoding_manager_init(DrdEncodingManager *self)
     self->h264_bitrate = DRD_H264_DEFAULT_BITRATE;
     self->h264_framerate = DRD_H264_DEFAULT_FRAMERATE;
     self->h264_qp = DRD_H264_DEFAULT_QP;
+    self->h264_hw_accel = DRD_H264_DEFAULT_HW_ACCEL;
     self->h264 = NULL;
     self->rfx = NULL;
     self->progressive = NULL;
@@ -160,6 +162,7 @@ gboolean drd_encoding_manager_prepare(DrdEncodingManager *self, const DrdEncodin
     self->h264_bitrate = options->h264_bitrate;
     self->h264_framerate = options->h264_framerate;
     self->h264_qp = options->h264_qp;
+    self->h264_hw_accel = options->h264_hw_accel;
     self->gfx_force_keyframe = TRUE;
     self->gfx_progressive_rfx_frames = 0;
     self->gfx_large_change_threshold = options->gfx_large_change_threshold;
@@ -405,8 +408,8 @@ static int drd_encoder_init_h264(DrdEncodingManager *encoder)
         goto fail;
     if (!h264_context_set_option(encoder->h264, H264_CONTEXT_OPTION_QP, encoder->h264_qp))
         goto fail;
-    // if (!h264_context_set_option(encoder->h264, H264_CONTEXT_OPTION_HW_ACCEL, TRUE))
-    //     goto fail;
+    if (!h264_context_set_option(encoder->h264, H264_CONTEXT_OPTION_HW_ACCEL, encoder->h264_hw_accel))
+        goto fail;
     // if (!h264_context_set_option(encoder->h264, H264_CONTEXT_OPTION_USAGETYPE, H264_CAMERA_VIDEO_REAL_TIME))
     //     goto fail;
     // guint hw = h264_context_get_option(encoder->h264, H264_CONTEXT_OPTION_HW_ACCEL);

@@ -90,6 +90,7 @@ drd_config_init(DrdConfig *self)
     self->encoding.h264_bitrate = DRD_H264_DEFAULT_BITRATE;
     self->encoding.h264_framerate = DRD_H264_DEFAULT_FRAMERATE;
     self->encoding.h264_qp = DRD_H264_DEFAULT_QP;
+    self->encoding.h264_hw_accel = DRD_H264_DEFAULT_HW_ACCEL;
     self->encoding.gfx_large_change_threshold = DRD_GFX_DEFAULT_LARGE_CHANGE_THRESHOLD;
     self->encoding.gfx_progressive_refresh_interval = DRD_GFX_DEFAULT_PROGRESSIVE_REFRESH_INTERVAL;
     self->encoding.gfx_progressive_refresh_timeout_ms = DRD_GFX_DEFAULT_PROGRESSIVE_REFRESH_TIMEOUT_MS;
@@ -468,6 +469,17 @@ drd_config_load_from_key_file(DrdConfig *self, GKeyFile *keyfile, GError **error
             return FALSE;
         }
         self->encoding.h264_qp = (guint) qp;
+    }
+
+    if (g_key_file_has_key(keyfile, "encoding", "h264_hw_accel", NULL))
+    {
+        g_autofree gchar *hw_accel = g_key_file_get_string(keyfile, "encoding", "h264_hw_accel", NULL);
+        gboolean value = DRD_H264_DEFAULT_HW_ACCEL;
+        if (!drd_config_parse_bool(hw_accel, &value, error))
+        {
+            return FALSE;
+        }
+        self->encoding.h264_hw_accel = value;
     }
 
     if (g_key_file_has_key(keyfile, "encoding", "gfx_large_change_threshold", NULL))
