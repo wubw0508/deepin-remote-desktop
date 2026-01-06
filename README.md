@@ -97,3 +97,15 @@ dpkg-buildpackage -us -uc
 ## 调试
 1. drd 日志: export G_MESSAGES_DEBUG=all
 2. freerdp 日志: export WLOG_LEVEL=debug
+
+## H264与硬件加速支持
+1. 在freerdp开启，编译参数：
+```shell
+-DWITH_VIDEO_FFMPEG=ON
+-DWITH_FFMPEG=ON
+-DWITH_VAAPI=ON
+-DWITH_VAAPI_H264_ENCODING=ON
+```
+2. encoding配置中mode设置为auto或h264，即可开启h264编码；
+3. 代码中H264_CONTEXT_OPTION_HW_ACCEL设置为TRUE,开启h264硬件加速编码(TODO:目前ubuntu下开启会出现崩溃，可能是参数问题也有可能是freerdp问题，可以考虑不使用freerdp提供的编码器)；
+4. 当前H264编码仅支持avc420，avc444可以打开，但是画面比较糊，可能是参数或者流程存在问题；
