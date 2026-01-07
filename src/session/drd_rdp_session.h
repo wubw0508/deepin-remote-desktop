@@ -29,6 +29,7 @@ typedef void (*DrdRdpSessionClosedFunc)(DrdRdpSession *session, gpointer user_da
 
 DrdRdpSession *drd_rdp_session_new(freerdp_peer *peer);
 void drd_rdp_session_set_peer_address(DrdRdpSession *self, const gchar *peer_address);
+const gchar *drd_rdp_session_get_peer_address(DrdRdpSession *self);
 void drd_rdp_session_set_peer_state(DrdRdpSession *self, const gchar *state);
 void drd_rdp_session_set_runtime(DrdRdpSession *self, DrdServerRuntime *runtime);
 void drd_rdp_session_set_virtual_channel_manager(DrdRdpSession *self, HANDLE vcm);

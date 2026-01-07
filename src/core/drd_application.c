@@ -183,7 +183,7 @@ drd_application_on_signal(gpointer user_data)
     DrdApplication *self = DRD_APPLICATION(user_data);
     if (self->loop != NULL && g_main_loop_is_running(self->loop))
     {
-        if (!self->is_handover)
+        if (!self->is_handover || getuid() >= 1000)
         {
             g_main_loop_quit(self->loop);
             return G_SOURCE_CONTINUE;

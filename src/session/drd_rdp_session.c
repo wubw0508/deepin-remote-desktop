@@ -233,6 +233,19 @@ void drd_rdp_session_set_peer_address(DrdRdpSession *self, const gchar *peer_add
 }
 
 /*
+ * 功能：获取会话的对端地址描述。
+ * 逻辑：返回已记录的 peer_address，缺省时返回 unknown。
+ * 参数：self 会话实例。
+ * 外部接口：无。
+ */
+const gchar *drd_rdp_session_get_peer_address(DrdRdpSession *self)
+{
+    g_return_val_if_fail(DRD_IS_RDP_SESSION(self), "unknown");
+
+    return self->peer_address != NULL ? self->peer_address : "unknown";
+}
+
+/*
  * 功能：更新会话状态字符串并输出日志。
  * 逻辑：释放旧状态、复制新状态，记录 DRD_LOG_MESSAGE。
  * 参数：self 会话实例；state 状态描述。

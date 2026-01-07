@@ -411,9 +411,9 @@ drd_system_daemon_remove_client(DrdSystemDaemon *self, DrdRemoteClient *client)
 
 /*
  * 功能：将新连接注册为 handover 客户端并导出 DBus 接口。
- * 逻辑：生成或复用 routing token/remote_id，构建 handover skeleton 并导出到 handover manager；在连接上写入元数据；入队等待；同时向 LightDM 远程显示工厂创建 greeter display。
+ * 逻辑：生成或复用 routing token/remote_id，构建 handover skeleton 并导出到 handover manager；在连接上写入元数据；入队等待。
  * 参数：self system 守护实例；connection 新连接；info peek 到的 routing token 信息。
- * 外部接口：GLib g_ascii_string_to_unsigned/g_hash_table_contains/g_object_set_data；GDBus drd_dbus_remote_desktop_rdp_handover_skeleton_new/g_dbus_object_skeleton_add_interface/export；LightDM proxy drd_dbus_lightdm_remote_display_factory_proxy_new_for_bus_sync 与 drd_dbus_lightdm_remote_display_factory_call_create_remote_greeter_display_sync。
+ * 外部接口：GLib g_ascii_string_to_unsigned/g_hash_table_contains/g_object_set_data；GDBus drd_dbus_remote_desktop_rdp_handover_skeleton_new/g_dbus_object_skeleton_add_interface/export。
  */
 static gboolean
 drd_system_daemon_register_client(DrdSystemDaemon *self,
@@ -518,24 +518,6 @@ drd_system_daemon_register_client(DrdSystemDaemon *self,
                     client->id,
                     token_preview);
 
-    // call lightdm create remote display
-    if (!self->remote_display_factory)
-        self->remote_display_factory = drd_dbus_lightdm_remote_display_factory_proxy_new_for_bus_sync(G_BUS_TYPE_SYSTEM,
-            G_DBUS_PROXY_FLAGS_DO_NOT_AUTO_START,
-            DRD_LIGHTDM_REMOTE_FACTORY_BUS_NAME,
-            DRD_LIGHTDM_REMOTE_FACTORY_OBJECT_PATH,
-            NULL,
-            NULL);
-    g_autofree gchar*session_path = NULL;
-    g_autofree GError *error = NULL;
-    if (!drd_dbus_lightdm_remote_display_factory_call_create_remote_greeter_display_sync(self->remote_display_factory,
-        g_random_int_range(0, 128), 1920, 1080, "0.0.0.0", &session_path, NULL, &error))
-    {
-        DRD_LOG_WARNING("create remote display failed %s", error->message);
-        return TRUE; // Debug mode
-    }
-    DRD_LOG_MESSAGE("session_path=%s", session_path);
-
     return TRUE;
 }
 
@@ -606,9 +588,11 @@ drd_system_daemon_delegate(DrdRdpListener *listener,
 
 /*
  * 功能：监听器回调，记录连接对应的会话对象。
- * 逻辑：从连接 metadata 获取客户端结构；替换 session 引用并根据客户端请求的能力决定是否使用系统凭据；刷新活跃时间。
+ * 逻辑：从连接 metadata 获取客户端结构；替换 session 引用并根据客户端请求的能力决定是否使用系统凭据；创建 LightDM 远程显示；刷新活跃时间。
  * 参数：listener 监听器；session 新会话；connection 底层连接；user_data system 守护实例。
- * 外部接口：GLib g_object_get_data/g_clear_object/g_object_ref；drd_rdp_session_client_is_mstsc。
+ * 外部接口：GLib g_object_get_data/g_clear_object/g_object_ref；drd_rdp_session_client_is_mstsc；
+ *           LightDM proxy drd_dbus_lightdm_remote_display_factory_proxy_new_for_bus_sync 与
+ *           drd_dbus_lightdm_remote_display_factory_call_create_remote_greeter_display_sync。
  */
 static void
 drd_system_daemon_on_session_ready(DrdRdpListener *listener,
@@ -639,6 +623,38 @@ drd_system_daemon_on_session_ready(DrdRdpListener *listener,
         client->use_system_credentials =
                 drd_rdp_session_client_is_mstsc(session) && !client->routing->requested_rdstls;
     }
+
+    // call lightdm create remote display
+    if (!self->remote_display_factory)
+    {
+        self->remote_display_factory =
+                drd_dbus_lightdm_remote_display_factory_proxy_new_for_bus_sync(
+                        G_BUS_TYPE_SYSTEM,
+                        G_DBUS_PROXY_FLAGS_DO_NOT_AUTO_START,
+                        DRD_LIGHTDM_REMOTE_FACTORY_BUS_NAME,
+                        DRD_LIGHTDM_REMOTE_FACTORY_OBJECT_PATH,
+                        NULL,
+                        NULL);
+    }
+    g_autofree gchar *session_path = NULL;
+    g_autofree GError *error = NULL;
+    const gchar *peer_address = drd_rdp_session_get_peer_address(session);
+    if (!drd_dbus_lightdm_remote_display_factory_call_create_remote_greeter_display_sync(
+                self->remote_display_factory,
+                g_random_int_range(0, 128),
+                1920,
+                1080,
+                peer_address,
+                &session_path,
+                NULL,
+                &error))
+    {
+        DRD_LOG_WARNING("create remote display failed %s", error->message);
+        drd_system_daemon_touch_client(client);
+        return;
+    }
+    DRD_LOG_MESSAGE("session_path=%s", session_path);
+
     drd_system_daemon_touch_client(client);
 }
 
