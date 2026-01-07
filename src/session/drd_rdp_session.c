@@ -219,6 +219,20 @@ DrdRdpSession *drd_rdp_session_new(freerdp_peer *peer)
 }
 
 /*
+ * 功能：更新会话的对端地址描述。
+ * 逻辑：释放旧地址并复制新的 peer 描述字符串。
+ * 参数：self 会话实例；peer_address 对端地址描述。
+ * 外部接口：GLib g_strdup/g_clear_pointer。
+ */
+void drd_rdp_session_set_peer_address(DrdRdpSession *self, const gchar *peer_address)
+{
+    g_return_if_fail(DRD_IS_RDP_SESSION(self));
+
+    g_clear_pointer(&self->peer_address, g_free);
+    self->peer_address = g_strdup(peer_address != NULL ? peer_address : "unknown");
+}
+
+/*
  * 功能：更新会话状态字符串并输出日志。
  * 逻辑：释放旧状态、复制新状态，记录 DRD_LOG_MESSAGE。
  * 参数：self 会话实例；state 状态描述。

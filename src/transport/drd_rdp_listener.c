@@ -963,14 +963,13 @@ drd_rdp_listener_accept_peer(DrdRdpListener *self,
 
     if (!freerdp_peer_context_new(peer))
     {
-        DRD_LOG_WARNING("Failed to allocate peer %s context", peer->hostname);
+        DRD_LOG_WARNING("Failed to allocate peer %s context", peer_name);
         return FALSE;
     }
 
     if (drd_rdp_listener_has_active_session(self))
     {
-        DRD_LOG_WARNING("Rejecting connection from %s: session already active",
-                        peer_name != NULL ? peer_name : peer->hostname);
+        DRD_LOG_WARNING("Rejecting connection from %s: session already active", peer_name);
         return FALSE;
     }
 
@@ -980,12 +979,12 @@ drd_rdp_listener_accept_peer(DrdRdpListener *self,
         if (settings_error != NULL)
         {
             DRD_LOG_WARNING("Failed to configure peer %s settings: %s",
-                            peer->hostname,
+                            peer_name,
                             settings_error->message);
         }
         else
         {
-            DRD_LOG_WARNING("Failed to configure peer %s settings", peer->hostname);
+            DRD_LOG_WARNING("Failed to configure peer %s settings", peer_name);
         }
         return FALSE;
     }
@@ -997,21 +996,23 @@ drd_rdp_listener_accept_peer(DrdRdpListener *self,
 
     if (peer->Initialize == NULL || !peer->Initialize(peer))
     {
-        DRD_LOG_WARNING("Failed to initialize peer %s", peer->hostname);
+        DRD_LOG_WARNING("Failed to initialize peer %s", peer_name);
         return FALSE;
     }
 
     DrdRdpPeerContext *ctx = (DrdRdpPeerContext *) peer->context;
     if (ctx == NULL || ctx->session == NULL)
     {
-        DRD_LOG_WARNING("Peer %s context did not expose a session", peer->hostname);
+        DRD_LOG_WARNING("Peer %s context did not expose a session", peer_name);
         return FALSE;
     }
+
+    drd_rdp_session_set_peer_address(ctx->session, peer_name);
 
     ctx->vcm = WTSOpenServerA((LPSTR) peer->context);
     if (ctx->vcm == NULL || ctx->vcm == INVALID_HANDLE_VALUE)
     {
-        DRD_LOG_WARNING("Peer %s failed to create virtual channel manager", peer->hostname);
+        DRD_LOG_WARNING("Peer %s failed to create virtual channel manager", peer_name);
         return FALSE;
     }
 
@@ -1023,7 +1024,7 @@ drd_rdp_listener_accept_peer(DrdRdpListener *self,
 
     if (!drd_rdp_session_start_event_thread(ctx->session))
     {
-        DRD_LOG_WARNING("Failed to start event thread for peer %s", peer->hostname);
+        DRD_LOG_WARNING("Failed to start event thread for peer %s", peer_name);
         return FALSE;
     }
 
@@ -1047,8 +1048,7 @@ drd_rdp_listener_accept_peer(DrdRdpListener *self,
         }
     }
 
-    DRD_LOG_MESSAGE("Accepted connection from %s",
-                    peer_name != NULL ? peer_name : peer->hostname);
+    DRD_LOG_MESSAGE("Accepted connection from %s", peer_name);
     return TRUE;
 }
 
