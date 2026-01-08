@@ -481,6 +481,13 @@ drd_system_daemon_register_client(DrdSystemDaemon *self,
     {
         client->remote_id = (guint32) parsed_token_value;
     }
+    else
+    {
+        if (g_ascii_string_to_unsigned(client->routing->routing_token, 10, 1, G_MAXUINT32, &parsed_token_value, NULL))
+        {
+            client->remote_id = (guint32) parsed_token_value;
+        }
+    }
 
     client->use_system_credentials = FALSE;
     client->handover_count = 0;
