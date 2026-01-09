@@ -21,6 +21,7 @@
 #include "security/drd_local_session.h"
 #include "security/drd_nla_sam.h"
 #include "utils/drd_log.h"
+#include "utils/drd_system_info.h"
 
 typedef struct
 {
@@ -867,6 +868,9 @@ drd_configure_peer_settings(DrdRdpListener *self, freerdp_peer *client, GError *
 
     const guint32 width = self->encoding_options.width;
     const guint32 height = self->encoding_options.height;
+    const gboolean is_virtual_machine = drd_system_is_virtual_machine();
+    const gboolean h264_vm_support = self->encoding_options.h264_vm_support;
+    const gboolean enable_h264 = h264_vm_support || !is_virtual_machine;
     const gboolean enable_graphics_pipeline =
             (self->encoding_options.mode == DRD_ENCODING_MODE_RFX ||
              self->encoding_options.mode == DRD_ENCODING_MODE_AUTO ||
@@ -894,7 +898,7 @@ drd_configure_peer_settings(DrdRdpListener *self, freerdp_peer *client, GError *
         !freerdp_settings_set_bool(settings, FreeRDP_RemoteFxCodec, TRUE) ||
         !freerdp_settings_set_bool(settings, FreeRDP_RemoteFxImageCodec, TRUE) ||
         !freerdp_settings_set_bool(settings, FreeRDP_NSCodec, FALSE) ||
-        !freerdp_settings_set_bool(settings, FreeRDP_GfxH264, TRUE) ||
+        !freerdp_settings_set_bool(settings, FreeRDP_GfxH264, enable_h264) ||
         !freerdp_settings_set_bool(settings, FreeRDP_GfxAVC444v2, FALSE) ||
         !freerdp_settings_set_bool(settings, FreeRDP_GfxAVC444, FALSE) ||
         !freerdp_settings_set_bool(settings,FreeRDP_GfxProgressive,TRUE) ||
@@ -921,6 +925,11 @@ drd_configure_peer_settings(DrdRdpListener *self, freerdp_peer *client, GError *
                             G_IO_ERROR_FAILED,
                             "Failed to configure peer settings");
         return FALSE;
+    }
+
+    if (is_virtual_machine && !h264_vm_support)
+    {
+        DRD_LOG_MESSAGE("Virtual machine detected, H264 graphics pipeline is disabled by config");
     }
 
     if (self->encoding_options.mode == DRD_ENCODING_MODE_RFX)

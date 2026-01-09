@@ -1,5 +1,14 @@
 # 变更记录
 
+## 2026-01-08：虚拟机 H264 开关
+- **目的**：新增配置项控制虚拟机是否允许 H264 编码，默认关闭以规避虚拟化兼容问题。
+- **范围**：`src/core/drd_config.c`、`src/core/drd_encoding_options.h`、`src/transport/drd_rdp_listener.c`、`src/utils/drd_system_info.*`、`data/config.d/*.ini`、`doc/architecture.md`、`doc/plan_task_log.md`。
+- **主要改动**：
+  1. `DrdEncodingOptions` 增加 `h264_vm_support` 字段并写入默认值，配置解析支持读取该字段。
+  2. 新增虚拟机检测工具，发现虚拟机且配置关闭时禁用 `FreeRDP_GfxH264`。
+  3. 示例配置与架构说明补充该开关的说明。
+- **影响**：虚拟机环境默认降级为非 H264 协商，减少协议协商失败与编码兼容问题；需要时可通过配置显式开启。
+
 ## 2026-03-07：编码与 gfx 参数可配置
 - **目的**：让 H264 码率/帧率/QP 以及 GFX 刷新阈值/周期由配置驱动，便于按带宽或画质需求调优。
 - **范围**：`src/core/drd_config.*`、`src/core/drd_encoding_options.h`、`src/encoding/drd_encoding_manager.c`、`src/core/drd_server_runtime.c`、`data/config.d/*.ini`、`README.md`、`doc/architecture.md`。

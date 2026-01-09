@@ -392,11 +392,12 @@ drd_server_runtime_set_encoding_options(DrdServerRuntime *self,
                                       self->encoding_options.mode != encoding_options->mode ||
                                       self->encoding_options.enable_frame_diff != encoding_options->enable_frame_diff ||
                                       self->encoding_options.h264_bitrate != encoding_options->h264_bitrate ||
-                                      self->encoding_options.h264_framerate != encoding_options->h264_framerate ||
-                                      self->encoding_options.h264_qp != encoding_options->h264_qp ||
-                                      self->encoding_options.h264_hw_accel != encoding_options->h264_hw_accel ||
-                                      self->encoding_options.gfx_large_change_threshold !=
-                                              encoding_options->gfx_large_change_threshold ||
+                                     self->encoding_options.h264_framerate != encoding_options->h264_framerate ||
+                                     self->encoding_options.h264_qp != encoding_options->h264_qp ||
+                                     self->encoding_options.h264_hw_accel != encoding_options->h264_hw_accel ||
+                                     self->encoding_options.h264_vm_support != encoding_options->h264_vm_support ||
+                                     self->encoding_options.gfx_large_change_threshold !=
+                                             encoding_options->gfx_large_change_threshold ||
                                       self->encoding_options.gfx_progressive_refresh_interval !=
                                               encoding_options->gfx_progressive_refresh_interval ||
                                       self->encoding_options.gfx_progressive_refresh_timeout_ms !=

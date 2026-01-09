@@ -40,6 +40,7 @@ core_sources = files(
   'security/drd_local_session.c',
   'security/drd_nla_sam.c',
   'utils/drd_log.c',
+  'utils/drd_system_info.c',
   'system/drd_system_daemon.c',
   'system/drd_handover_daemon.c'
 )
