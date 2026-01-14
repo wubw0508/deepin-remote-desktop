@@ -315,6 +315,8 @@ drd_x11_input_inject_keyboard(DrdX11Input *self, guint16 flags, guint8 scancode,
     g_mutex_lock(&self->lock);
     if (!drd_x11_input_check_running(self, error))
     {
+        DRD_LOG_WARNING("Keyboard injection failed - input injector not running, flags: 0x%04X, scancode: 0x%02X",
+                      flags, scancode);
         g_mutex_unlock(&self->lock);
         return FALSE;
     }
@@ -344,6 +346,12 @@ drd_x11_input_inject_keyboard(DrdX11Input *self, guint16 flags, guint8 scancode,
                       release ? False : True,
                       CurrentTime);
     XFlush(self->display);
+
+    DRD_LOG_DEBUG("Keyboard injection - flags: 0x%04X, scancode: 0x%02X, release: %s, extended: %s, "
+                  "rdp_scancode: 0x%08X, base_scancode: 0x%02X, x11_keycode: %u, cache_miss: %s, action: %s",
+                  flags, scancode, release ? "true" : "false", extended ? "true" : "false",
+                  rdp_scancode, base_scancode, x11_keycode, cache_miss ? "true" : "false",
+                  release ? "release" : "press");
 
     g_mutex_unlock(&self->lock);
     return TRUE;
@@ -513,14 +521,40 @@ drd_x11_input_inject_pointer(DrdX11Input *self,
 }
 
 /*
- * 功能：根据特殊扫描码映射 X11 KeyCode（处理左右 Ctrl/Alt/Win）。
- * 逻辑：按扫描码选择对应 KeySym，再调用 XKeysymToKeycode 转换。
- * 参数：self 输入实例；scancode RDP 基础扫描码；extended 是否扩展。
- * 外部接口：XKeysymToKeycode，X11 KeySym 常量。
+ * 功能：根据特殊扫描码映射 X11 KeyCode（处理左右 Ctrl/Alt/Shift/Win）。
+ *
+ * 详细说明：
+ * 该函数用于处理修饰键（Ctrl/Alt/Shift/Win）的特殊映射逻辑。
+ * 在 RDP 协议中，左右修饰键使用相同的扫描码，通过 extended 标志来区分：
+ * - extended = FALSE: 表示左键
+ * - extended = TRUE: 表示右键
+ *
+ * 例如：
+ * - RDP_SCANCODE_LMENU + extended=FALSE -> 左 Alt (XK_Alt_L)
+ * - RDP_SCANCODE_LMENU + extended=TRUE -> 右 Alt (XK_Alt_R)
+ *
+ * 映射逻辑：
+ * - 对于修饰键扫描码（LMENU/LCONTROL/LSHIFT/LWIN）：
+ *   - extended = FALSE: 映射到左键（XK_Alt_L/XK_Control_L/XK_Shift_L/XK_Super_L）
+ *   - extended = TRUE: 映射到右键（XK_Alt_R/XK_Control_R/XK_Shift_R/XK_Super_R）
+ *
+ * 参数：
+ *   self - 输入实例指针，包含 X11 display 连接
+ *   scancode - RDP 基础扫描码（0-255）
+ *   extended - 是否为扩展键标志，用于区分左右修饰键
+ *
+ * 返回值：
+ *   成功时返回对应的 X11 keycode（非零值）
+ *   失败时返回 0（表示无法映射该扫描码）
+ *
+ * 外部接口：
+ *   - X11: XKeysymToKeycode（KeySym 到 keycode 转换）
+ *   - X11: KeySym 常量（XK_Alt_L, XK_Alt_R, XK_Control_L 等）
  */
 static KeyCode
 drd_x11_input_lookup_special_keycode(DrdX11Input *self, guint8 scancode, gboolean extended)
 {
+    // 检查 display 是否有效
     if (self->display == NULL)
     {
         return 0;
@@ -528,29 +562,39 @@ drd_x11_input_lookup_special_keycode(DrdX11Input *self, guint8 scancode, gboolea
 
     KeySym keysym = NoSymbol;
 
+    // 根据 RDP 扫描码选择对应的 X11 KeySym
+    // 注意：在 RDP 协议中，左右修饰键使用相同的扫描码，通过 extended 标志区分
     switch (scancode)
     {
         case RDP_SCANCODE_CODE(RDP_SCANCODE_LMENU):
+            // LMENU: extended=FALSE -> 左 Alt, extended=TRUE -> 右 Alt
             keysym = extended ? XK_Alt_R : XK_Alt_L;
             break;
         case RDP_SCANCODE_CODE(RDP_SCANCODE_LCONTROL):
+            // LCONTROL: extended=FALSE -> 左 Ctrl, extended=TRUE -> 右 Ctrl
             keysym = extended ? XK_Control_R : XK_Control_L;
             break;
         case RDP_SCANCODE_CODE(RDP_SCANCODE_LSHIFT):
+            // LSHIFT: extended=FALSE -> 左 Shift, extended=TRUE -> 右 Shift
             keysym = extended ? XK_Shift_R : XK_Shift_L;
             break;
         case RDP_SCANCODE_CODE(RDP_SCANCODE_LWIN):
+            // LWIN: extended=FALSE -> 左 Win, extended=TRUE -> 右 Win
             keysym = extended ? XK_Super_R : XK_Super_L;
             break;
         default:
+            // 不支持的扫描码
             break;
     }
 
+    // 如果没有找到对应的 KeySym，返回 0
     if (keysym == NoSymbol)
     {
         return 0;
     }
 
+    // 将 KeySym 转换为 X11 keycode
+    // 使用 XKeysymToKeycode 可以确保与当前系统的键盘布局一致
     KeyCode keycode = XKeysymToKeycode(self->display, keysym);
     return keycode;
 }
@@ -572,9 +616,49 @@ drd_x11_input_reset_keycode_cache(DrdX11Input *self)
 
 /*
  * 功能：解析 RDP 扫描码对应的 X11 keycode，并可告知是否发生缓存未命中。
- * 逻辑：计算缓存索引；若未命中则调用 FreeRDP 映射或特殊键查找并写入缓存；返回最终 keycode。
- * 参数：self 输入实例；base_scancode 基础扫描码；extended 是否扩展；out_cache_miss 输出是否未命中缓存。
- * 外部接口：FreeRDP freerdp_keyboard_get_x11_keycode_from_rdp_scancode；内部 drd_x11_input_lookup_special_keycode。
+ *
+ * 详细说明：
+ * 该函数是键盘输入转换的核心组件，负责将远程桌面协议（RDP）的键盘扫描码映射到本地 X11 系统的 keycode。
+ * 由于 RDP 和 X11 使用不同的键盘编码体系，需要进行转换。为了提高性能，函数实现了缓存机制，
+ * 避免每次按键事件都进行昂贵的映射计算。
+ *
+ * 缓存策略：
+ * - 使用 512 个元素的缓存数组（DRD_X11_KEYCODE_CACHE_SIZE）
+ * - 索引计算：base_scancode + (extended ? 256 : 0)
+ *   - 非扩展键（0-255）：索引范围 0-255
+ *   - 扩展键（0-255）：索引范围 256-511
+ * - 缓存未命中时，通过 FreeRDP 库进行映射，失败则尝试特殊键查找
+ * - 映射结果存入缓存，后续相同按键直接返回缓存值
+ *
+ * 映射流程：
+ * 1. 计算缓存索引（考虑扩展标志）
+ * 2. 检查缓存是否命中
+ * 3. 缓存未命中时：
+ *    a. 对于修饰键（Ctrl/Alt/Shift/Win），优先使用 X11 的 XKeysymToKeycode 进行映射
+ *       这是因为 FreeRDP 的键盘映射表可能与当前系统的 X11 键盘布局不一致
+ *    b. 对于其他按键，使用 FreeRDP 的 freerdp_keyboard_get_x11_keycode_from_rdp_scancode 进行标准映射
+ *    c. 如果标准映射失败（返回 0），尝试特殊键映射
+ *    d. 将映射结果存入缓存
+ * 4. 返回映射结果，并通过 out_cache_miss 参数告知调用者是否发生缓存未命中
+ *
+ * 参数：
+ *   self - 输入实例指针，包含 X11 display 连接和缓存数组
+ *   base_scancode - RDP 基础扫描码（0-255），表示按键的物理位置
+ *   extended - 是否为扩展键标志，用于区分左右修饰键（如左 Ctrl vs 右 Ctrl）
+ *   out_cache_miss - 输出参数，用于返回是否发生缓存未命中（可选，可为 NULL）
+ *
+ * 返回值：
+ *   成功时返回对应的 X11 keycode（非零值）
+ *   失败时返回 0（表示无法映射该扫描码）
+ *
+ * 外部接口：
+ *   - FreeRDP: freerdp_keyboard_get_x11_keycode_from_rdp_scancode（标准扫描码映射）
+ *   - 内部: drd_x11_input_lookup_special_keycode（特殊键映射）
+ *   - GLib: g_return_val_if_fail（参数校验）
+ *
+ * 使用场景：
+ *   在 drd_x11_input_inject_keyboard 函数中被调用，用于将 RDP 键盘事件转换为 X11 事件。
+ *   每次按键事件都会调用此函数，因此缓存机制对性能至关重要。
  */
 static guint16
 drd_x11_input_resolve_keycode(DrdX11Input *self,
@@ -582,34 +666,78 @@ drd_x11_input_resolve_keycode(DrdX11Input *self,
                               gboolean extended,
                               gboolean *out_cache_miss)
 {
+    // 参数校验：确保 self 是有效的 DrdX11Input 实例
     g_return_val_if_fail(DRD_IS_X11_INPUT(self), 0);
 
+    // 计算缓存索引：
+    // - 非扩展键：索引 = base_scancode（范围 0-255）
+    // - 扩展键：索引 = base_scancode + 256（范围 256-511）
+    // 这样设计可以区分同一扫描码的扩展和非扩展版本（如左 Ctrl 和右 Ctrl）
     const guint index = base_scancode + (extended ? 256u : 0u);
+
+    // 边界检查：确保索引在缓存数组范围内
     g_return_val_if_fail(index < DRD_X11_KEYCODE_CACHE_SIZE, 0);
 
+    // 从缓存中读取已存储的 keycode
     guint16 cached = self->keycode_cache[index];
+
+    // 标记是否发生缓存未命中，默认为 FALSE
     gboolean cache_miss = FALSE;
 
+    // 检查缓存是否有效（DRD_X11_KEYCODE_CACHE_INVALID = 0xFFFF 表示无效）
     if (cached == DRD_X11_KEYCODE_CACHE_INVALID)
     {
+        // 缓存未命中，需要进行映射计算
         cache_miss = TRUE;
-        guint16 keycode = (guint16) freerdp_keyboard_get_x11_keycode_from_rdp_scancode(
-                base_scancode, extended ? TRUE : FALSE);
-        if (keycode == 0)
+
+        guint16 keycode = 0;
+
+        // 步骤 1：对于修饰键（Ctrl/Alt/Shift/Win），优先使用 X11 的 XKeysymToKeycode 进行映射
+        // 这是因为 FreeRDP 的键盘映射表可能与当前系统的 X11 键盘布局不一致
+        // 例如：FreeRDP 可能返回左 Alt 的 keycode 为 205，但实际系统的 keycode 是 64
+        // 注意：在 RDP 协议中，左右修饰键使用相同的扫描码，通过 extended 标志区分
+        switch (base_scancode)
         {
-            keycode = (guint16) drd_x11_input_lookup_special_keycode(self,
-                                                                     base_scancode,
-                                                                     extended);
+            case RDP_SCANCODE_CODE(RDP_SCANCODE_LMENU):    // 左/右 Alt（通过 extended 标志区分）
+            case RDP_SCANCODE_CODE(RDP_SCANCODE_LCONTROL): // 左/右 Ctrl（通过 extended 标志区分）
+            case RDP_SCANCODE_CODE(RDP_SCANCODE_LSHIFT):   // 左/右 Shift（通过 extended 标志区分）
+            case RDP_SCANCODE_CODE(RDP_SCANCODE_LWIN):     // 左/右 Win（通过 extended 标志区分）
+                // 对于修饰键，使用 X11 的 KeySym 到 keycode 映射
+                // 这样可以确保与当前系统的键盘布局一致
+                keycode = (guint16) drd_x11_input_lookup_special_keycode(self,
+                                                                         base_scancode,
+                                                                         extended);
+                break;
+            default:
+                // 步骤 2：对于其他按键，使用 FreeRDP 的标准映射函数
+                // 该函数根据 RDP 扫描码和扩展标志返回对应的 X11 keycode
+                keycode = (guint16) freerdp_keyboard_get_x11_keycode_from_rdp_scancode(
+                        base_scancode, extended ? TRUE : FALSE);
+
+                // 步骤 3：如果标准映射失败（返回 0），尝试特殊键映射
+                if (keycode == 0)
+                {
+                    keycode = (guint16) drd_x11_input_lookup_special_keycode(self,
+                                                                             base_scancode,
+                                                                             extended);
+                }
+                break;
         }
+
+        // 步骤 4：将映射结果存入缓存，供后续使用
+        // 即使映射失败（keycode = 0），也会缓存该结果，避免重复计算
         self->keycode_cache[index] = keycode;
         cached = keycode;
     }
 
+    // 如果调用者提供了 out_cache_miss 参数，则返回缓存未命中状态
+    // 这对于性能监控和调试很有用
     if (out_cache_miss != NULL)
     {
         *out_cache_miss = cache_miss;
     }
 
+    // 返回映射结果（可能是缓存值或新计算的值）
     return cached;
 }
 
