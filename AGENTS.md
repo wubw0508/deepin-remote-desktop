@@ -1,7 +1,7 @@
 # Repository Guidelines
 
 ## Project Structure & Module Organization
-deepin-remote-desktop groups screen acquisition and input helpers inside `src/capture`, `src/encoding`, `src/input`, and `src/utils` (packed as `libdrd-media.a`). Runtime glue, session state machines, RDP transport, and security hooks live in `src/core`, `src/session`, `src/transport`, and `src/security`, while `main.c` stays minimal. Config samples plus TLS fixtures live in `config/` and `certs/`; generated binaries stay inside `build/`. Architecture notes and task history are under `doc/`. Keep developer scratch pads inside `buildDir/` only—never commit them.
+`deepin-remote-desktop` groups screen acquisition and input helpers inside `src/capture`, `src/encoding`, `src/input`, and `src/utils` (packed as `libdrd-media.a`). Runtime glue, session state machines, RDP transport, and security hooks live in `src/core`, `src/session`, `src/transport`, and `src/security`, while `main.c` stays minimal. Config samples plus TLS fixtures live in `config/` and `certs/`; generated binaries stay inside `build/`. Architecture notes and task history are under `doc/`. Keep developer scratch pads inside `buildDir/` only—never commit them.
 
 ## Build, Test, and Development Commands
 All workflows flow through Meson:
@@ -18,6 +18,9 @@ Target C17 with GLib/GObject. Indent with four spaces, wrap arguments past 120 c
 
 ## Testing Guidelines
 Add new GLib tests beside the implementation (e.g., `src/session/tests/test_rdp_session.c`) and register them via `g_test_add()`. Name cases `test_<module>_<scenario>` and cover at least the happy path plus one failure. For concurrency-heavy code, run `meson test -C build --repeat=2 --setup=ci` to expose races, then record FPS or rdpgfx stats from the smoke command in the PR description.
+
+## Documentation Updates
+Maintain architecture notes in `doc/architecture.md`. Log each task with purpose, scope, changes, and impact under `doc/` (use `doc/task-*.md` naming). Keep `doc/changelog.md` aligned with behavior changes.
 
 ## Commit & Pull Request Guidelines
 Commit messages follow the repo norm: concise Chinese subject with optional English tail (`session: 收敛 Rdpgfx ACK timeout`). Reference issues in the body when applicable. PRs must explain motivation, outline validation (meson compile/test + smoke run), and attach logs or packet traces when editing transport/session/TLS layers. Link to updated `doc/architecture.md` sections whenever diagrams change.
