@@ -7,6 +7,7 @@
 #include <freerdp/input.h>
 #include <freerdp/locale/keyboard.h>
 #include <freerdp/scancode.h>
+#include <winpr/input.h>
 
 #include <gio/gio.h>
 #include <math.h>
@@ -303,9 +304,9 @@ drd_x11_input_check_running(DrdX11Input *self, GError **error)
 
 /*
  * 功能：将 RDP 键盘事件转换为 X11 事件注入。
- * 逻辑：持锁校验运行态；解析扩展/释放标志并解析 RDP 扫描码到 X11 keycode（缓存 + FreeRDP 映射 + 特殊键查找）；注入 XTest FakeKeyEvent 并刷新。
+ * 逻辑：持锁校验运行态；解析扩展/释放标志并解析 RDP 扫描码到 X11 keycode（缓存 + WinPR 映射 + 特殊键查找）；注入 XTest FakeKeyEvent 并刷新。
  * 参数：self 输入实例；flags RDP 键盘标志；scancode RDP 基础扫描码；error 错误输出。
- * 外部接口：FreeRDP MAKE_RDP_SCANCODE/RDP_SCANCODE_CODE/freerdp_keyboard_get_x11_keycode_from_rdp_scancode；XTestFakeKeyEvent/XFlush；日志 DRD_LOG_DEBUG。
+ * 外部接口：FreeRDP MAKE_RDP_SCANCODE/RDP_SCANCODE_CODE；WinPR GetVirtualKeyCodeFromVirtualScanCode/GetKeycodeFromVirtualKeyCode；XTestFakeKeyEvent/XFlush；日志 DRD_LOG_DEBUG。
  */
 gboolean
 drd_x11_input_inject_keyboard(DrdX11Input *self, guint16 flags, guint8 scancode, GError **error)
@@ -627,7 +628,7 @@ drd_x11_input_reset_keycode_cache(DrdX11Input *self)
  * - 索引计算：base_scancode + (extended ? 256 : 0)
  *   - 非扩展键（0-255）：索引范围 0-255
  *   - 扩展键（0-255）：索引范围 256-511
- * - 缓存未命中时，通过 FreeRDP 库进行映射，失败则尝试特殊键查找
+ * - 缓存未命中时，通过 WinPR 的键盘映射进行转换，失败则尝试特殊键查找
  * - 映射结果存入缓存，后续相同按键直接返回缓存值
  *
  * 映射流程：
@@ -635,8 +636,8 @@ drd_x11_input_reset_keycode_cache(DrdX11Input *self)
  * 2. 检查缓存是否命中
  * 3. 缓存未命中时：
  *    a. 对于修饰键（Ctrl/Alt/Shift/Win），优先使用 X11 的 XKeysymToKeycode 进行映射
- *       这是因为 FreeRDP 的键盘映射表可能与当前系统的 X11 键盘布局不一致
- *    b. 对于其他按键，使用 FreeRDP 的 freerdp_keyboard_get_x11_keycode_from_rdp_scancode 进行标准映射
+ *       这是因为 WinPR 的键盘映射表可能与当前系统的 X11 键盘布局不一致
+ *    b. 对于其他按键，使用 WinPR 的键盘映射将扫描码转为 Virtual Key 再转为 XKB keycode
  *    c. 如果标准映射失败（返回 0），尝试特殊键映射
  *    d. 将映射结果存入缓存
  * 4. 返回映射结果，并通过 out_cache_miss 参数告知调用者是否发生缓存未命中
@@ -652,7 +653,7 @@ drd_x11_input_reset_keycode_cache(DrdX11Input *self)
  *   失败时返回 0（表示无法映射该扫描码）
  *
  * 外部接口：
- *   - FreeRDP: freerdp_keyboard_get_x11_keycode_from_rdp_scancode（标准扫描码映射）
+ *   - WinPR: GetVirtualKeyCodeFromVirtualScanCode/GetKeycodeFromVirtualKeyCode（扫描码映射）
  *   - 内部: drd_x11_input_lookup_special_keycode（特殊键映射）
  *   - GLib: g_return_val_if_fail（参数校验）
  *
@@ -693,8 +694,8 @@ drd_x11_input_resolve_keycode(DrdX11Input *self,
         guint16 keycode = 0;
 
         // 步骤 1：对于修饰键（Ctrl/Alt/Shift/Win），优先使用 X11 的 XKeysymToKeycode 进行映射
-        // 这是因为 FreeRDP 的键盘映射表可能与当前系统的 X11 键盘布局不一致
-        // 例如：FreeRDP 可能返回左 Alt 的 keycode 为 205，但实际系统的 keycode 是 64
+        // 这是因为 WinPR 的键盘映射表可能与当前系统的 X11 键盘布局不一致
+        // 例如：WinPR 可能返回左 Alt 的 keycode 为 205，但实际系统的 keycode 是 64
         // 注意：在 RDP 协议中，左右修饰键使用相同的扫描码，通过 extended 标志区分
         switch (base_scancode)
         {
@@ -709,10 +710,13 @@ drd_x11_input_resolve_keycode(DrdX11Input *self,
                                                                          extended);
                 break;
             default:
-                // 步骤 2：对于其他按键，使用 FreeRDP 的标准映射函数
-                // 该函数根据 RDP 扫描码和扩展标志返回对应的 X11 keycode
-                keycode = (guint16) freerdp_keyboard_get_x11_keycode_from_rdp_scancode(
-                        base_scancode, extended ? TRUE : FALSE);
+                // 步骤 2：对于其他按键，使用 WinPR 的标准映射函数
+                // 先将 RDP 扫描码转换为 Virtual Key，再映射为 XKB keycode
+                const UINT32 rdp_scancode = MAKE_RDP_SCANCODE(base_scancode, extended);
+                const UINT32 vkcode = GetVirtualKeyCodeFromVirtualScanCode(
+                        rdp_scancode,
+                        WINPR_KBD_TYPE_IBM_ENHANCED);
+                keycode = (guint16) GetKeycodeFromVirtualKeyCode(vkcode, WINPR_KEYCODE_TYPE_XKB);
 
                 // 步骤 3：如果标准映射失败（返回 0），尝试特殊键映射
                 if (keycode == 0)
