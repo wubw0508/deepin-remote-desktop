@@ -1,0 +1,197 @@
+<!DOCTYPE node PUBLIC '-//freedesktop//DTD D-BUS Object Introspection 1.0//EN' 'http://www.freedesktop.org/standards/dbus/1.0/introspect.dtd'>
+<node>
+  <!-- DBus Name: org.deepin.RemoteDesktop -->
+  <interface name="org.deepin.RemoteDesktop1">
+
+    <property name="RuntimeMode" type="s" access="read" />
+    <property name="Version" type="s" access="read" />
+
+  </interface>
+  <!-- 远程桌面 -->
+  <interface name="org.deepin.RemoteDesktop1.RemoteLogin">
+
+    <property name="Enabled" type="b" access="read" />
+    <property name="Port" type="i" access="read" />
+    <property name="TlsCert" type="s" access="read" />
+    <property name="TlsFingerprint" type="s" access="read" />
+    <property name="TlsKey" type="s" access="read" />
+    <property name="NlaAuthEnabled" type="b" access="read" />
+    <!-- 是否断开连接时自动注销 -->
+    <property name="AutoLogoutOnDisconnect" type="b" access="read" />
+    <property name="SessionList" type="ao" access="read" />
+
+    <!--启动与禁用-->
+    <method name="EnableRemoteLogin">
+      <arg name="Enable" direction="in" type="b" />
+    </method>
+    <method name="GetCredentials">
+      <annotation name="org.gtk.GDBus.C.UnixFD" value="true" />
+      <arg name="CredentialsFd" direction="out" type="h" />
+    </method>
+    <method name="SetCredentials">
+      <annotation name="org.gtk.GDBus.C.UnixFD" value="true" />
+      <arg name="CredentialsFd" direction="in" type="h" />
+    </method>
+
+    <!--连接时需要用户密码-->
+    <method name="EnableNlaAuth">
+      <arg name="Enable" direction="in" type="b" />
+    </method>
+
+    <!--连接断开时注销账户-->
+    <method name="EnableAutoLogoutRdpDisconnect">
+      <arg name="Enable" direction="in" type="b" />
+    </method>
+
+    <method name="GenNlaCredential" />
+    <method name="RequestPort">
+      <arg name="Port" direction="out" type="i" />
+    </method>
+
+    <method name="RequestHandover">
+      <arg name="HandoverPath" direction="out" type="o" />
+    </method>
+  </interface>
+
+  <interface name="org.deepin.RemoteDesktop1.Shadow">
+
+    <property name="Enabled" type="b" access="read" />
+    <property name="Port" type="i" access="read" />
+    <!--存在多IP场景-->
+    <property name="IPList" type="as" access="read" />
+    <property name="TlsCert" type="s" access="read" />
+    <property name="TlsFingerprint" type="s" access="read" />
+    <property name="TlsKey" type="s" access="read" />
+    <property name="NlaAuthEnabled" type="b" access="read" />
+    <property name="LocalControlFirst" type="b" access="read" />
+    <property name="AllowClientTakeControl" type="b" access="read" />
+    <property name="AutoLockOnConnect" type="b" access="read" />
+    <property name="LockOnDisconnect" type="b" access="read" />
+    <!-- 密钥更新频次 -->
+    <property name="NlaUpdateInterval" type="i" access="read" />
+    <!-- 远程协助连接可能处于连接、暂停、断开的状态 -->
+    <property name="ConnectionState" type="i" access="read" />
+
+    <!--启动与禁用-->
+    <method name="EnableShadow">
+      <arg name="Enable" direction="in" type="b" />
+    </method>
+
+    <!-- 允许协助时由远程用户控制桌面 -->
+    <method name="EnableAllowClientTakeControl">
+      <arg name="Enable" direction="in" type="b" />
+    </method>
+
+    <!-- 本机用户控制权优先 -->
+    <method name="EnableLocalControlFirst">
+      <arg name="Enable" direction="in" type="b" />
+    </method>
+
+    <!-- 连接时锁屏 -->
+    <method name="EnableAutoLockOnConnect">
+      <arg name="Enable" direction="in" type="b" />
+    </method>
+
+    <!-- 断开时自动锁屏 -->
+    <method name="EnableLockOnDisconnect">
+      <arg name="Enable" direction="in" type="b" />
+    </method>
+
+    <method name="GetCredentials">
+      <annotation name="org.gtk.GDBus.C.UnixFD" value="true" />
+      <arg name="CredentialsFd" direction="out" type="h" />
+    </method>
+
+    <method name="SetCredentials">
+      <annotation name="org.gtk.GDBus.C.UnixFD" value="true" />
+      <arg name="CredentialsFd" direction="in" type="h" />
+    </method>
+
+    <!-- 连接时需要用户密码 -->
+    <method name="EnableConnectWithCredentials">
+      <arg name="NeedCredentials" direction="in" type="b" />
+    </method>
+
+    <method name="SetNlaUpdateInterval">
+      <arg name="Interval" direction="in" type="i" />
+    </method>
+
+    <!-- 本地用户暂停、恢复、断开协助 -->
+    <method name="SwitchConnectionState">
+      <arg name="State" direction="in" type="i"/>
+    </method>
+
+    <method name="GenNlaCredential" />
+
+  </interface>
+  <!-- dbus path:/org/deepin/RemoteDesktop1/HandoverSession1 -->
+  <interface name="org.deepin.RemoteDesktop1.HandoverSession">
+
+    <!--远程登录只有一个IP-->
+    <property name="IP" type="s" access="read" />
+    <!--
+        StartHandover:
+
+        The dst server is ready and starts the handover process, sending its
+        one time username/password and getting the certificate and key used
+        by the system server.
+    -->
+    <method name="StartHandover">
+      <arg name="OneTimeAuthToken" direction="in" type="s" />
+      <arg name="Certificate" direction="out" type="s" />
+      <arg name="Key" direction="out" type="s" />
+    </method>
+
+    <!--
+        RedirectClient:
+
+        Signal to make the src server send the Server Redirection PDU with the
+        routing token and one time username/password to the client.
+    -->
+    <signal name="RedirectClient">
+      <arg name="RoutingToken" type="s" />
+      <arg name="AuthToken" type="s" />
+    </signal>
+
+    <!--
+        TakeClientReady:
+
+        Signal to make the dst server aware that the client was redirected
+        successfully and is ready to be taken.
+    -->
+    <signal name="TakeClientReady">
+      <arg name="UseSystemCredentials" type="b" />
+    </signal>
+
+    <!--
+        TakeClient:
+
+        The dst server takes the file descriptor which has the active
+        connection of the redirected client.
+    -->
+    <method name="TakeClient">
+      <annotation name="org.gtk.GDBus.C.UnixFD" value="true" />
+      <arg name="Fd" direction="out" type="h" />
+    </method>
+
+    <!--
+        GetSystemCredentials:
+
+        Get the system credentials to be used instead of the one-time
+        generated to authenticate the redirected client.
+    -->
+    <method name="GetSystemCredentials">
+      <arg name="AuthToken" direction="out" type="s" />
+    </method>
+
+    <!--
+        RestartHandover:
+
+        Signal to inform the dst server that a new handover is ready to start.
+        This happens after the first handover.
+    -->
+    <signal name="RestartHandover" />
+
+  </interface>
+
+</node>
