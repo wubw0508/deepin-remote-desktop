@@ -106,7 +106,7 @@ DrdX11Input
 handle_keyboard(flags, scancode):
   1. 提取扩展标志 (flags & 0xE000)
   2. 剥离第 9 位，保留 8-bit scancode
-  3. 传入 freerdp_keyboard_get_x11_keycode_from_rdp_scancode()
+  3. 传入 freerdp_keyboard_get_x11_keycode_from_scancode()
   4. 如映射失败（返回 0）→ XKeysymToKeycode() 回退
   5. XTestFakeKeyEvent(display, keycode, !is_release, CurrentTime)
   6. XFlush()
