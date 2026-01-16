@@ -1,5 +1,13 @@
 # 变更记录
 
+## 2026-03-13：Qt 迁移接口补全与入口释放替换
+- **目的**：补全 Qt 迁移骨架的接口占位并在 Qt 入口使用 Qt 方式管理对象生命周期。
+- **范围**：`qt/core/*`、`qt/session/*`、`qt/transport/*`、`qt/security/*`、`qt/system/*`、`src/main.cpp`。
+- **主要改动**：
+  1. Qt 模块骨架补充与现有 C 模块对应的接口占位，统一将 GLib 类型改为 Qt 类型。
+  2. 入口使用 Qt 智能指针管理 `DrdApplication`，移除直接 `g_object_unref` 调用。
+- **影响**：Qt 侧接口完整性提升，入口内存释放路径与 Qt 对齐，现有运行逻辑保持不变。
+
 ## 2026-03-12：Qt 骨架与 Meson 接入
 - **目的**：在保留 Meson 构建的前提下引入 Qt 框架骨架，为后续 Qt 化迁移做准备。
 - **范围**：`meson.build`、`src/meson.build`、`src/main.cpp`、`qt/`、`doc/task-qt-scaffold.md`。

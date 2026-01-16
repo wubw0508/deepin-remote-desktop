@@ -14,3 +14,9 @@
 - **范围**：`qt/`、`meson.build`、`src/meson.build`、`src/main.cpp`、`doc/task-qt-scaffold.md`。
 - **修改内容**：新增 Qt 模块骨架类，Meson 引入 Qt6 依赖并链接静态库，入口改用 QtCore 进行初始化。
 - **影响**：构建流程仍使用 Meson，但新增 Qt/C++ 编译链，为后续模块迁移提供基础。
+
+## 2026-03-13：Qt 模块接口占位补全
+- **目的**：补齐 Qt 迁移目录内各模块的接口占位，并替换入口释放方式。
+- **范围**：`qt/core/*`、`qt/session/*`、`qt/transport/*`、`qt/security/*`、`qt/system/*`、`src/main.cpp`。
+- **修改内容**：Qt 模块补充与 C 侧接口对应的占位函数，GLib 类型改为 Qt 类型；入口用 Qt 智能指针管理 `DrdApplication` 生命周期。
+- **影响**：Qt 迁移骨架的接口更完整，后续逐步替换实现时具备统一签名基础。

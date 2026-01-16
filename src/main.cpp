@@ -2,6 +2,7 @@
 
 #include <QCoreApplication>
 #include <QDebug>
+#include <QSharedPointer>
 #include <QString>
 
 #include <freerdp/channels/channels.h>
@@ -46,17 +47,21 @@ int main(int argc, char **argv) {
   QCoreApplication qt_app(argc, argv);
   (void)qt_app;
 
-  DrdApplication *app = drd_application_new();
-  if (app == NULL) {
+  QSharedPointer<DrdApplication> app(drd_application_new(),
+                                     [](DrdApplication *value) {
+                                       if (value != nullptr) {
+                                         g_object_unref(value);
+                                       }
+                                     });
+  if (app.isNull()) {
     qCritical().noquote() << QStringLiteral("create application failed");
     return 1;
   }
 
-  const int status = drd_application_run(app, argc, argv, nullptr);
+  const int status = drd_application_run(app.data(), argc, argv, nullptr);
   if (status != 0) {
     qCritical().noquote() << QStringLiteral("run error");
   }
 
-  g_object_unref(app);
   return status;
 }
