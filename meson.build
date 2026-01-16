@@ -40,7 +40,7 @@ avcodec_dep = dependency('libavcodec', required: true)
 avutil_dep = dependency('libavutil', required: true)
 swscale_dep = dependency('libswscale', required: true)
 vaapi_dep = dependency('libva', required: true)
-qt_dep = dependency('qt6', modules: ['Core', 'DBus'], required: true)
+qt_dep = dependency('qt6', modules: ['Core', 'DBus', 'Network'], required: true)
 
 subdir('qt')
 subdir('src')

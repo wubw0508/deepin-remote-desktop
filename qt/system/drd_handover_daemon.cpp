@@ -282,7 +282,7 @@ bool DrdQtHandoverDaemon::take_client(QString *error_message) {
     }
     return false;
   }
-  const QDBusUnixFileDescriptor fd =
+  QDBusUnixFileDescriptor fd =
       qvariant_cast<QDBusUnixFileDescriptor>(args.at(0));
   if (!fd.isValid()) {
     if (error_message) {

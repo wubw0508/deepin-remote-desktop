@@ -4,6 +4,7 @@
 #include <QString>
 
 class DrdQtTlsCredentials : public QObject {
+  Q_OBJECT
 public:
   explicit DrdQtTlsCredentials(QObject *parent = nullptr);
 

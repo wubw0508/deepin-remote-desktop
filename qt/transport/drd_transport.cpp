@@ -19,133 +19,6 @@ bool runtime_mode_matches(const QString &runtime_mode_name,
                                    Qt::CaseInsensitive) == 0;
 }
 
-class DrdQtRdpListener : public QObject {
-public:
-  using ListenerDelegate = DrdQtTransport::ListenerDelegate;
-  using ListenerSessionCallback = DrdQtTransport::ListenerSessionCallback;
-
-  DrdQtRdpListener(const QString &bind_address, quint16 port, QObject *runtime,
-                   const QVariantMap &encoding_options, bool nla_enabled,
-                   const QString &nla_username, const QString &nla_password,
-                   const QString &pam_service,
-                   const QString &runtime_mode_name, QObject *parent)
-      : QObject(parent),
-        bind_address_(bind_address),
-        port_(port),
-        runtime_(runtime),
-        encoding_options_(encoding_options),
-        nla_enabled_(nla_enabled),
-        nla_username_(nla_username),
-        nla_password_(nla_password),
-        pam_service_(pam_service),
-        runtime_mode_name_(runtime_mode_name) {}
-
-  bool start(QString *error_message) {
-    if (running_) {
-      if (error_message) {
-        error_message->clear();
-      }
-      return true;
-    }
-    if (!runtime_) {
-      if (error_message) {
-        *error_message = QStringLiteral("Listener runtime is required");
-      }
-      return false;
-    }
-    if (pam_service_.isEmpty()) {
-      if (error_message) {
-        *error_message = QStringLiteral("PAM service is required");
-      }
-      return false;
-    }
-    if (nla_enabled_ &&
-        (nla_username_.isEmpty() || nla_password_.isEmpty())) {
-      if (error_message) {
-        *error_message = QStringLiteral("NLA credentials are required");
-      }
-      return false;
-    }
-    if (!runtime_mode_matches(runtime_mode_name_, "user") &&
-        !runtime_mode_matches(runtime_mode_name_, "system") &&
-        !runtime_mode_matches(runtime_mode_name_, "handover")) {
-      if (error_message) {
-        *error_message = QStringLiteral("Invalid runtime mode");
-      }
-      return false;
-    }
-    running_ = true;
-    if (error_message) {
-      error_message->clear();
-    }
-    return true;
-  }
-
-  void stop() { running_ = false; }
-
-  QObject *runtime() const { return runtime_; }
-
-  void set_delegate(const ListenerDelegate &func, QObject *user_data) {
-    delegate_func_ = func;
-    delegate_user_data_ = user_data;
-  }
-
-  void set_session_callback(const ListenerSessionCallback &func,
-                            QObject *user_data) {
-    session_cb_ = func;
-    session_cb_data_ = user_data;
-  }
-
-  bool adopt_connection(QIODevice *connection, QString *error_message) {
-    if (!connection) {
-      if (error_message) {
-        *error_message = QStringLiteral("Connection is required");
-      }
-      return false;
-    }
-    if (delegate_func_) {
-      QString delegate_error;
-      if (delegate_func_(this, connection, delegate_user_data_,
-                         &delegate_error)) {
-        if (error_message) {
-          *error_message = delegate_error;
-        }
-        return true;
-      }
-    }
-    auto *session = new DrdQtRdpSession(this);
-    sessions_.append(session);
-    if (session_cb_) {
-      session_cb_(this, session, connection, session_cb_data_);
-    }
-    if (error_message) {
-      error_message->clear();
-    }
-    return true;
-  }
-
-  bool is_handover_mode() const {
-    return runtime_mode_matches(runtime_mode_name_, "handover");
-  }
-
-private:
-  QString bind_address_;
-  quint16 port_ = 0;
-  QPointer<QObject> runtime_;
-  QVariantMap encoding_options_;
-  bool nla_enabled_ = false;
-  QString nla_username_;
-  QString nla_password_;
-  QString pam_service_;
-  QString runtime_mode_name_;
-  bool running_ = false;
-  ListenerDelegate delegate_func_;
-  QPointer<QObject> delegate_user_data_;
-  ListenerSessionCallback session_cb_;
-  QPointer<QObject> session_cb_data_;
-  QList<QPointer<QObject>> sessions_;
-};
-
 int find_crlf(const QByteArray &buffer, int start) {
   for (int i = start; i + 1 < buffer.size(); ++i) {
     if (buffer.at(i) == '\r' && buffer.at(i + 1) == '\n') {
@@ -173,6 +46,107 @@ QString read_routing_token(const QByteArray &buffer, int start, int *line_end) {
 }
 
 } // namespace
+
+DrdQtRdpListener::DrdQtRdpListener(
+    const QString &bind_address, quint16 port, QObject *runtime,
+    const QVariantMap &encoding_options, bool nla_enabled,
+    const QString &nla_username, const QString &nla_password,
+    const QString &pam_service, const QString &runtime_mode_name,
+    QObject *parent)
+    : QObject(parent), bind_address_(bind_address), port_(port),
+      runtime_(runtime), encoding_options_(encoding_options),
+      nla_enabled_(nla_enabled), nla_username_(nla_username),
+      nla_password_(nla_password), pam_service_(pam_service),
+      runtime_mode_name_(runtime_mode_name) {}
+
+bool DrdQtRdpListener::start(QString *error_message) {
+  if (running_) {
+    if (error_message) {
+      error_message->clear();
+    }
+    return true;
+  }
+  if (!runtime_) {
+    if (error_message) {
+      *error_message = QStringLiteral("Listener runtime is required");
+    }
+    return false;
+  }
+  if (pam_service_.isEmpty()) {
+    if (error_message) {
+      *error_message = QStringLiteral("PAM service is required");
+    }
+    return false;
+  }
+  if (nla_enabled_ && (nla_username_.isEmpty() || nla_password_.isEmpty())) {
+    if (error_message) {
+      *error_message = QStringLiteral("NLA credentials are required");
+    }
+    return false;
+  }
+  if (!runtime_mode_matches(runtime_mode_name_, "user") &&
+      !runtime_mode_matches(runtime_mode_name_, "system") &&
+      !runtime_mode_matches(runtime_mode_name_, "handover")) {
+    if (error_message) {
+      *error_message = QStringLiteral("Invalid runtime mode");
+    }
+    return false;
+  }
+  running_ = true;
+  if (error_message) {
+    error_message->clear();
+  }
+  return true;
+}
+
+void DrdQtRdpListener::stop() { running_ = false; }
+
+QObject *DrdQtRdpListener::runtime() const { return runtime_; }
+
+void DrdQtRdpListener::set_delegate(const ListenerDelegate &func,
+                                     QObject *user_data) {
+  delegate_func_ = func;
+  delegate_user_data_ = user_data;
+}
+
+void DrdQtRdpListener::set_session_callback(const ListenerSessionCallback &func,
+                                             QObject *user_data) {
+  session_cb_ = func;
+  session_cb_data_ = user_data;
+}
+
+bool DrdQtRdpListener::adopt_connection(QIODevice *connection,
+                                         QString *error_message) {
+  if (!connection) {
+    if (error_message) {
+      *error_message = QStringLiteral("Connection is required");
+    }
+    return false;
+  }
+  if (delegate_func_) {
+    QString delegate_error;
+    if (delegate_func_(this, connection, delegate_user_data_,
+                       &delegate_error)) {
+      if (error_message) {
+        *error_message = delegate_error;
+      }
+      return true;
+    }
+  }
+  auto *session = new DrdQtRdpSession(this);
+  sessions_.append(session);
+  if (session_cb_) {
+    session_cb_(this, session, connection, session_cb_data_);
+  }
+  if (error_message) {
+    error_message->clear();
+  }
+  return true;
+}
+
+bool DrdQtRdpListener::is_handover_mode() const {
+  return runtime_mode_matches(runtime_mode_name_, "handover");
+}
 
 DrdQtTransport::DrdQtTransport(QObject *parent)
     : QObject(parent), module_name_(QStringLiteral("transport")) {}
