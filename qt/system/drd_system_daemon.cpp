@@ -27,6 +27,8 @@ bool DrdQtSystemDaemon::start(QString *error_message) {
   if (error_message) {
     error_message->clear();
   }
+  pending_client_count_ = 0;
+  remote_client_count_ = 0;
   running_ = true;
   return true;
 }
@@ -41,6 +43,8 @@ void DrdQtSystemDaemon::stop() {
   if (main_loop_) {
     main_loop_->quit();
   }
+  pending_client_count_ = 0;
+  remote_client_count_ = 0;
   running_ = false;
 }
 
