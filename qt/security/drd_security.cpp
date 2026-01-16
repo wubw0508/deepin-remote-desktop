@@ -1,4 +1,4 @@
-#include "qt/security/drd_security.h"
+#include "drd_security.h"
 
 DrdQtSecurity::DrdQtSecurity(QObject *parent)
     : QObject(parent), module_name_(QStringLiteral("security")) {}
@@ -43,6 +43,7 @@ bool DrdQtSecurity::drd_tls_credentials_apply(DrdQtTlsCredentials *credentials,
                                               QString *error_message) {
   Q_UNUSED(credentials);
   Q_UNUSED(settings);
+  // TODO: FreeRDP TLS settings application.
   if (error_message) {
     error_message->clear();
   }

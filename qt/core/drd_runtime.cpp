@@ -1,4 +1,4 @@
-#include "qt/core/drd_runtime.h"
+#include "drd_runtime.h"
 
 DrdQtRuntime::DrdQtRuntime(QObject *parent)
     : QObject(parent), module_name_(QStringLiteral("core")) {}
@@ -174,6 +174,7 @@ bool DrdQtRuntime::drd_server_runtime_pull_encoded_frame_surface_gfx(
   Q_UNUSED(surface_id);
   Q_UNUSED(timeout_us);
   Q_UNUSED(frame_id);
+  // TODO: FreeRDP Rdpgfx surface frame pull.
   if (h264) {
     *h264 = false;
   }
@@ -191,6 +192,7 @@ bool DrdQtRuntime::drd_server_runtime_send_cached_frame_surface_gfx(
   Q_UNUSED(context);
   Q_UNUSED(surface_id);
   Q_UNUSED(frame_id);
+  // TODO: FreeRDP Rdpgfx cached frame submission.
   if (h264) {
     *h264 = false;
   }
@@ -208,6 +210,7 @@ bool DrdQtRuntime::drd_server_runtime_pull_encoded_frame_surface_bit(
   Q_UNUSED(frame_id);
   Q_UNUSED(max_payload);
   Q_UNUSED(timeout_us);
+  // TODO: FreeRDP SurfaceBits frame pull.
   if (error_message) {
     error_message->clear();
   }
@@ -268,5 +271,6 @@ bool DrdQtRuntime::drd_runtime_encoder_prepare(QObject *runtime, quint32 codecs,
   Q_UNUSED(runtime);
   Q_UNUSED(codecs);
   Q_UNUSED(settings);
+  // TODO: FreeRDP codec capability wiring (rdpSettings).
   return false;
 }

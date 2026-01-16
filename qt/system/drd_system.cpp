@@ -1,4 +1,4 @@
-#include "qt/system/drd_system.h"
+#include "drd_system.h"
 
 DrdQtSystem::DrdQtSystem(QObject *parent)
     : QObject(parent), module_name_(QStringLiteral("system")) {}

@@ -5,10 +5,14 @@
 #include <QSharedPointer>
 #include <QString>
 
+// 禁用 pedantic 警告，因为 winpr3 头文件包含匿名结构体
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wpedantic"
 #include <freerdp/channels/channels.h>
 #include <freerdp/primitives.h>
 #include <winpr/ssl.h>
 #include <winpr/wtsapi.h>
+#pragma GCC diagnostic pop
 
 static bool drd_initialize_winpr(void) {
   /*
