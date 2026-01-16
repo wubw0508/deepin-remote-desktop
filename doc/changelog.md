@@ -1,5 +1,13 @@
 # 变更记录
 
+## 2026-03-12：Qt 骨架与 Meson 接入
+- **目的**：在保留 Meson 构建的前提下引入 Qt 框架骨架，为后续 Qt 化迁移做准备。
+- **范围**：`meson.build`、`src/meson.build`、`src/main.cpp`、`qt/`、`doc/task-qt-scaffold.md`。
+- **主要改动**：
+  1. 新增 `qt/` 目录并按核心/会话/传输/安全/系统模块建立 Qt 骨架类。
+  2. Meson 引入 Qt6 依赖与静态库构建，入口改用 QtCore 初始化。
+- **影响**：构建流程保持 Meson，但新增 Qt/C++ 编译路径，运行逻辑保持不变。
+
 ## 2026-01-12：AVC420 VAAPI 硬件编码接入
 - **目的**：在 Surface GFX 的 AVC420 分支启用 VAAPI 硬件编码，降低 CPU 编码负载。
 - **范围**：`src/encoding/drd_encoding_manager.c`、`meson.build`、`src/meson.build`、`doc/architecture.md`、`doc/encoding_vaapi_avc420.md`、`doc/changelog.md`、`.codex/plan/avc420-vaapi.md`。

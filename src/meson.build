@@ -6,6 +6,7 @@ deps = [
   gio_dep,
   gio_unix_dep,
   gobject_dep,
+  qt_dep,
   freerdp_server_dep,
   freerdp_core_dep,
   winpr_dep,
@@ -63,10 +64,11 @@ core_sources += dbus_gen_lightdm
 exe_sources = []
 exe_sources += media_sources
 exe_sources += core_sources
-exe_sources += files('main.c')
+exe_sources += files('main.cpp')
 
 executable('deepin-remote-desktop', exe_sources,
-           include_directories: src_inc,
+           include_directories: [src_inc, drd_qt_includes],
            dependencies: deps,
+           link_with: drd_qt_libs,
            install: true,
            install_dir: get_option('bindir'))
