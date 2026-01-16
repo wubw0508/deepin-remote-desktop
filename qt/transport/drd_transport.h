@@ -1,13 +1,15 @@
 #pragma once
 
 #include <QIODevice>
+#include <QList>
 #include <QObject>
+#include <QPointer>
 #include <QString>
 #include <QVariantMap>
 #include <QtGlobal>
 #include <functional>
-#include <QPointer>
-#include <QList>
+
+class QTcpServer;
 
 struct DrdQtRoutingTokenInfo {
   bool requested_rdstls = false;
@@ -25,8 +27,8 @@ public:
   DrdQtRdpListener(const QString &bind_address, quint16 port, QObject *runtime,
                    const QVariantMap &encoding_options, bool nla_enabled,
                    const QString &nla_username, const QString &nla_password,
-                   const QString &pam_service,
-                   const QString &runtime_mode_name, QObject *parent);
+                   const QString &pam_service, const QString &runtime_mode_name,
+                   QObject *parent);
 
   bool start(QString *error_message);
   void stop();
@@ -53,6 +55,7 @@ private:
   ListenerSessionCallback session_cb_;
   QPointer<QObject> session_cb_data_;
   QList<QPointer<QObject>> sessions_;
+  QPointer<QTcpServer> server_;
 };
 
 class DrdQtTransport : public QObject {

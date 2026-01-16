@@ -1,8 +1,11 @@
 #include "drd_transport.h"
 
 #include <QByteArray>
+#include <QHostAddress>
 #include <QList>
 #include <QPointer>
+#include <QTcpServer>
+#include <QTcpSocket>
 
 #include "session/drd_rdp_session.h"
 
@@ -92,6 +95,35 @@ bool DrdQtRdpListener::start(QString *error_message) {
     }
     return false;
   }
+  if (!server_) {
+    server_ = new QTcpServer(this);
+    QObject::connect(server_, &QTcpServer::newConnection, this, [this]() {
+      while (server_ && server_->hasPendingConnections()) {
+        QTcpSocket *socket = server_->nextPendingConnection();
+        if (!socket) {
+          continue;
+        }
+        QString accept_error;
+        if (!adopt_connection(socket, &accept_error)) {
+          socket->close();
+          socket->deleteLater();
+        }
+      }
+    });
+  }
+  QHostAddress address;
+  if (!address.setAddress(bind_address_)) {
+    if (error_message) {
+      *error_message = QStringLiteral("Invalid bind address");
+    }
+    return false;
+  }
+  if (!server_->listen(address, port_)) {
+    if (error_message) {
+      *error_message = server_->errorString();
+    }
+    return false;
+  }
   running_ = true;
   if (error_message) {
     error_message->clear();
@@ -99,24 +131,31 @@ bool DrdQtRdpListener::start(QString *error_message) {
   return true;
 }
 
-void DrdQtRdpListener::stop() { running_ = false; }
+void DrdQtRdpListener::stop() {
+  if (server_) {
+    server_->close();
+    server_->deleteLater();
+    server_.clear();
+  }
+  running_ = false;
+}
 
 QObject *DrdQtRdpListener::runtime() const { return runtime_; }
 
 void DrdQtRdpListener::set_delegate(const ListenerDelegate &func,
-                                     QObject *user_data) {
+                                    QObject *user_data) {
   delegate_func_ = func;
   delegate_user_data_ = user_data;
 }
 
 void DrdQtRdpListener::set_session_callback(const ListenerSessionCallback &func,
-                                             QObject *user_data) {
+                                            QObject *user_data) {
   session_cb_ = func;
   session_cb_data_ = user_data;
 }
 
 bool DrdQtRdpListener::adopt_connection(QIODevice *connection,
-                                         QString *error_message) {
+                                        QString *error_message) {
   if (!connection) {
     if (error_message) {
       *error_message = QStringLiteral("Connection is required");
@@ -135,6 +174,8 @@ bool DrdQtRdpListener::adopt_connection(QIODevice *connection,
   }
   auto *session = new DrdQtRdpSession(this);
   sessions_.append(session);
+  QObject::connect(session, &QObject::destroyed, this,
+                   [this, session]() { sessions_.removeAll(session); });
   if (session_cb_) {
     session_cb_(this, session, connection, session_cb_data_);
   }
@@ -285,8 +326,7 @@ bool DrdQtTransport::drd_routing_token_peek(QIODevice *connection,
                               static_cast<quint8>(header.at(3));
   if (version != kTpktVersion) {
     if (error_message) {
-      *error_message =
-          QStringLiteral("The TPKT header doesn't have version 3");
+      *error_message = QStringLiteral("The TPKT header doesn't have version 3");
     }
     return false;
   }
@@ -307,9 +347,8 @@ bool DrdQtTransport::drd_routing_token_peek(QIODevice *connection,
   const int x224_offset = 4;
   const quint8 length_indicator = static_cast<quint8>(pdu.at(x224_offset));
   const quint8 cr_cdt = static_cast<quint8>(pdu.at(x224_offset + 1));
-  const quint16 dst_ref =
-      (static_cast<quint16>(pdu.at(x224_offset + 2)) << 8) |
-      static_cast<quint8>(pdu.at(x224_offset + 3));
+  const quint16 dst_ref = (static_cast<quint16>(pdu.at(x224_offset + 2)) << 8) |
+                          static_cast<quint8>(pdu.at(x224_offset + 3));
   const quint8 class_opt = static_cast<quint8>(pdu.at(x224_offset + 6));
   if (tpkt_length - 5 != length_indicator || cr_cdt != 0xE0 || dst_ref != 0 ||
       (class_opt & 0xFC) != 0) {
@@ -340,9 +379,9 @@ bool DrdQtTransport::drd_routing_token_peek(QIODevice *connection,
     return true;
   }
   const quint8 neg_type = static_cast<quint8>(pdu.at(after_cookie));
-  const quint16 neg_length = static_cast<quint16>(pdu.at(after_cookie + 2)) |
-                             (static_cast<quint16>(pdu.at(after_cookie + 3))
-                              << 8);
+  const quint16 neg_length =
+      static_cast<quint16>(pdu.at(after_cookie + 2)) |
+      (static_cast<quint16>(pdu.at(after_cookie + 3)) << 8);
   const quint32 requested_protocols =
       static_cast<quint32>(static_cast<quint8>(pdu.at(after_cookie + 4))) |
       (static_cast<quint32>(static_cast<quint8>(pdu.at(after_cookie + 5)))
