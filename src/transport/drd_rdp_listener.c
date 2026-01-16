@@ -14,6 +14,9 @@
 #include <winpr/wtypes.h>
 #include <winpr/wtsapi.h>
 
+#include <X11/Xlib.h>
+#include <X11/extensions/XTest.h>
+
 #include "core/drd_server_runtime.h"
 #include "input/drd_input_dispatcher.h"
 #include "session/drd_rdp_session.h"
@@ -38,6 +41,14 @@ static BOOL drd_rdp_peer_keyboard_event(rdpInput *input, UINT16 flags, UINT8 cod
 static BOOL drd_rdp_peer_unicode_event(rdpInput *input, UINT16 flags, UINT16 code);
 
 static BOOL drd_rdp_peer_pointer_event(rdpInput *input, UINT16 flags, UINT16 x, UINT16 y);
+
+static BOOL drd_rdp_peer_extended_pointer_event(rdpInput *input, UINT16 flags, UINT16 x, UINT16 y);
+
+static BOOL drd_rdp_peer_keyboard_event_x11(rdpInput *input, UINT16 flags, UINT8 code);
+
+static BOOL drd_rdp_peer_unicode_event_x11(rdpInput *input, UINT16 flags, UINT16 code);
+
+static BOOL drd_rdp_peer_pointer_event_x11(rdpInput *input, UINT16 flags, UINT16 x, UINT16 y);
 
 static BOOL drd_peer_capabilities(freerdp_peer *client);
 
@@ -732,6 +743,182 @@ drd_rdp_peer_keyboard_event(rdpInput *input, UINT16 flags, UINT8 code)
 }
 
 /*
+ * 功能：适配器函数，将 FreeRDP input 回调转换为 x11_shadow 输入函数调用。
+ * 逻辑：直接使用 X11 API 模拟键盘事件，绕过 shadow subsystem。
+ * 参数：input FreeRDP 输入接口；flags 按键标志；code 扫码。
+ * 外部接口：X11 XTest 扩展。
+ */
+static BOOL
+drd_rdp_peer_keyboard_event_x11(rdpInput *input, UINT16 flags, UINT8 code)
+{
+    if (input == NULL || input->context == NULL)
+    {
+        return TRUE;
+    }
+
+    DrdRdpPeerContext *ctx = (DrdRdpPeerContext *) input->context;
+    if (ctx == NULL || ctx->session == NULL)
+    {
+        return TRUE;
+    }
+
+    // 获取 X11 显示
+    Display *display = XOpenDisplay(NULL);
+    if (display == NULL)
+    {
+        return TRUE;
+    }
+
+    DWORD vkcode = 0;
+    DWORD keycode = 0;
+    DWORD scancode = code;
+    BOOL extended = FALSE;
+
+    if (flags & KBD_FLAGS_EXTENDED)
+        extended = TRUE;
+
+    if (extended)
+        scancode |= KBDEXT;
+
+    vkcode = GetVirtualKeyCodeFromVirtualScanCode(scancode, WINPR_KBD_TYPE_IBM_ENHANCED);
+
+    if (extended)
+        vkcode |= KBDEXT;
+
+    keycode = GetKeycodeFromVirtualKeyCode(vkcode, WINPR_KEYCODE_TYPE_XKB);
+
+    DRD_LOG_MESSAGE("Keyboard event conversion: code=%u (0x%02x), flags=0x%04x, extended=%d, "
+                    "scancode=%u (0x%04x), vkcode=%u (0x%04x), keycode=%u (0x%04x), event_type=%s",
+                    code, code, flags, extended,
+                    scancode, scancode, vkcode, vkcode, keycode, keycode,
+                    (flags & KBD_FLAGS_RELEASE) ? "release" : "press");
+
+    if (keycode != 0)
+    {
+        XLockDisplay(display);
+        XTestGrabControl(display, True);
+
+        if (flags & KBD_FLAGS_RELEASE)
+            XTestFakeKeyEvent(display, keycode, False, CurrentTime);
+        else
+            XTestFakeKeyEvent(display, keycode, True, CurrentTime);
+
+        XTestGrabControl(display, False);
+        XFlush(display);
+        XUnlockDisplay(display);
+    }
+
+    XCloseDisplay(display);
+    return TRUE;
+}
+
+/*
+ * 功能：适配器函数，将 FreeRDP input 回调转换为 x11_shadow 输入函数调用。
+ * 逻辑：直接使用 X11 API 模拟 Unicode 键盘事件，绕过 shadow subsystem。
+ * 参数：input FreeRDP 输入接口；flags 按键标志；code Unicode 码点。
+ * 外部接口：X11 XTest 扩展。
+ */
+static BOOL
+drd_rdp_peer_unicode_event_x11(rdpInput *input, UINT16 flags, UINT16 code)
+{
+    if (input == NULL || input->context == NULL)
+    {
+        return TRUE;
+    }
+
+    DrdRdpPeerContext *ctx = (DrdRdpPeerContext *) input->context;
+    if (ctx == NULL || ctx->session == NULL)
+    {
+        return TRUE;
+    }
+
+    // Unicode 输入暂不支持
+    return TRUE;
+}
+
+/*
+ * 功能：适配器函数，将 FreeRDP input 回调转换为 x11_shadow 输入函数调用。
+ * 逻辑：直接使用 X11 API 模拟鼠标事件，绕过 shadow subsystem。
+ * 参数：input FreeRDP 输入接口；flags 鼠标标志；x/y 坐标。
+ * 外部接口：X11 XTest 扩展。
+ */
+static BOOL
+drd_rdp_peer_pointer_event_x11(rdpInput *input, UINT16 flags, UINT16 x, UINT16 y)
+{
+    if (input == NULL || input->context == NULL)
+    {
+        return TRUE;
+    }
+
+    DrdRdpPeerContext *ctx = (DrdRdpPeerContext *) input->context;
+    if (ctx == NULL || ctx->session == NULL)
+    {
+        return TRUE;
+    }
+
+    // 获取 X11 显示
+    Display *display = XOpenDisplay(NULL);
+    if (display == NULL)
+    {
+        return TRUE;
+    }
+
+    unsigned int button = 0;
+    BOOL down = FALSE;
+
+    XLockDisplay(display);
+    XTestGrabControl(display, True);
+
+    if (flags & PTR_FLAGS_WHEEL)
+    {
+        BOOL negative = FALSE;
+
+        if (flags & PTR_FLAGS_WHEEL_NEGATIVE)
+            negative = TRUE;
+
+        button = (negative) ? 5 : 4;
+        XTestFakeButtonEvent(display, button, True, (unsigned long)CurrentTime);
+        XTestFakeButtonEvent(display, button, False, (unsigned long)CurrentTime);
+    }
+    else if (flags & PTR_FLAGS_HWHEEL)
+    {
+        BOOL negative = FALSE;
+
+        if (flags & PTR_FLAGS_WHEEL_NEGATIVE)
+            negative = TRUE;
+
+        button = (negative) ? 7 : 6;
+        XTestFakeButtonEvent(display, button, True, (unsigned long)CurrentTime);
+        XTestFakeButtonEvent(display, button, False, (unsigned long)CurrentTime);
+    }
+    else
+    {
+        if (flags & PTR_FLAGS_MOVE)
+            XTestFakeMotionEvent(display, 0, x, y, CurrentTime);
+
+        if (flags & PTR_FLAGS_BUTTON1)
+            button = 1;
+        else if (flags & PTR_FLAGS_BUTTON2)
+            button = 3;
+        else if (flags & PTR_FLAGS_BUTTON3)
+            button = 2;
+
+        if (flags & PTR_FLAGS_DOWN)
+            down = TRUE;
+
+        if (button)
+            XTestFakeButtonEvent(display, button, down, CurrentTime);
+    }
+
+    XTestGrabControl(display, False);
+    XFlush(display);
+    XUnlockDisplay(display);
+    XCloseDisplay(display);
+
+    return TRUE;
+}
+
+/*
  * 功能：处理客户端 Unicode 键盘事件。
  * 逻辑：获取 dispatcher，调用 drd_input_dispatcher_handle_unicode，失败时记录调试日志。
  * 参数：input 输入接口；flags 标志；code Unicode 码点。
@@ -774,6 +961,59 @@ drd_rdp_peer_pointer_event(rdpInput *input, UINT16 flags, UINT16 x, UINT16 y)
     {
         DRD_LOG_WARNING("Pointer injection failed: %s", error->message);
     }
+    return TRUE;
+}
+
+/*
+ * 功能：适配器函数，将 FreeRDP input 回调转换为 x11_shadow 输入函数调用。
+ * 逻辑：直接使用 X11 API 模拟输入事件，绕过 shadow subsystem。
+ * 参数：input FreeRDP 输入接口；flags 标志；code 扫码；x/y 坐标。
+ * 外部接口：X11 XTest 扩展。
+ */
+static BOOL
+drd_rdp_peer_extended_pointer_event(rdpInput *input, UINT16 flags, UINT16 x, UINT16 y)
+{
+    if (input == NULL || input->context == NULL)
+    {
+        return TRUE;
+    }
+
+    DrdRdpPeerContext *ctx = (DrdRdpPeerContext *) input->context;
+    if (ctx == NULL || ctx->session == NULL)
+    {
+        return TRUE;
+    }
+
+    // 获取 X11 显示
+    Display *display = XOpenDisplay(NULL);
+    if (display == NULL)
+    {
+        return TRUE;
+    }
+
+    XLockDisplay(display);
+    XTestGrabControl(display, True);
+    XTestFakeMotionEvent(display, 0, x, y, CurrentTime);
+
+    UINT button = 0;
+    BOOL down = FALSE;
+
+    if (flags & PTR_XFLAGS_BUTTON1)
+        button = 8;
+    else if (flags & PTR_XFLAGS_BUTTON2)
+        button = 9;
+
+    if (flags & PTR_XFLAGS_DOWN)
+        down = TRUE;
+
+    if (button)
+        XTestFakeButtonEvent(display, button, down, CurrentTime);
+
+    XTestGrabControl(display, False);
+    XFlush(display);
+    XUnlockDisplay(display);
+    XCloseDisplay(display);
+
     return TRUE;
 }
 
