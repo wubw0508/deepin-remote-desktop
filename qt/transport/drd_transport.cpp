@@ -10,6 +10,8 @@
 
 #include "session/drd_rdp_session.h"
 
+#include <freerdp/freerdp.h>
+
 namespace {
 
 constexpr quint8 kTpktVersion = 3;
@@ -64,38 +66,50 @@ DrdQtRdpListener::DrdQtRdpListener(
       runtime_mode_name_(runtime_mode_name) {}
 
 bool DrdQtRdpListener::start(QString *error_message) {
+  qInfo() << "Starting RDP listener on" << bind_address_ << ":" << port_;
+  
   if (running_) {
+    qInfo() << "RDP listener already running on" << bind_address_ << ":" << port_;
     if (error_message) {
       error_message->clear();
     }
     return true;
   }
+  
   if (!runtime_) {
+    qCritical() << "Listener runtime is required";
     if (error_message) {
       *error_message = QStringLiteral("Listener runtime is required");
     }
     return false;
   }
+  
   if (pam_service_.isEmpty()) {
+    qCritical() << "PAM service is required";
     if (error_message) {
       *error_message = QStringLiteral("PAM service is required");
     }
     return false;
   }
+  
   if (nla_enabled_ && (nla_username_.isEmpty() || nla_password_.isEmpty())) {
+    qCritical() << "NLA credentials are required";
     if (error_message) {
       *error_message = QStringLiteral("NLA credentials are required");
     }
     return false;
   }
+  
   if (!runtime_mode_matches(runtime_mode_name_, "user") &&
       !runtime_mode_matches(runtime_mode_name_, "system") &&
       !runtime_mode_matches(runtime_mode_name_, "handover")) {
+    qCritical() << "Invalid runtime mode:" << runtime_mode_name_;
     if (error_message) {
       *error_message = QStringLiteral("Invalid runtime mode");
     }
     return false;
   }
+  
   if (!server_) {
     server_ = new QTcpServer(this);
     QObject::connect(server_, &QTcpServer::newConnection, this, [this]() {
@@ -104,28 +118,39 @@ bool DrdQtRdpListener::start(QString *error_message) {
         if (!socket) {
           continue;
         }
+        qInfo() << "New incoming connection from" << socket->peerAddress().toString() << ":" << socket->peerPort();
         QString accept_error;
         if (!adopt_connection(socket, &accept_error)) {
+          qWarning() << "Failed to adopt connection from" << socket->peerAddress().toString() << ":" << socket->peerPort() << "-" << accept_error;
           socket->close();
           socket->deleteLater();
+        } else {
+          qInfo() << "Successfully adopted connection from" << socket->peerAddress().toString() << ":" << socket->peerPort();
         }
       }
     });
   }
+  
   QHostAddress address;
   if (!address.setAddress(bind_address_)) {
+    qCritical() << "Invalid bind address:" << bind_address_;
     if (error_message) {
       *error_message = QStringLiteral("Invalid bind address");
     }
     return false;
   }
+  
   if (!server_->listen(address, port_)) {
+    qCritical() << "Failed to listen on" << bind_address_ << ":" << port_ << "-" << server_->errorString();
     if (error_message) {
       *error_message = server_->errorString();
     }
     return false;
   }
+  
   running_ = true;
+  qInfo() << "RDP listener successfully started on" << bind_address_ << ":" << port_;
+  
   if (error_message) {
     error_message->clear();
   }
@@ -173,9 +198,58 @@ bool DrdQtRdpListener::adopt_connection(QIODevice *connection,
       return true;
     }
   }
-  // TODO: Create FreeRDP peer and initialize RDP session
-  // For now, create a basic session without FreeRDP peer
-  auto *session = new DrdQtRdpSession(nullptr, this);
+  
+  // 从 QTcpSocket 中获取文件描述符
+  QTcpSocket *socket = qobject_cast<QTcpSocket*>(connection);
+  if (!socket) {
+    if (error_message) {
+      *error_message = QStringLiteral("Connection is not a TCP socket");
+    }
+    return false;
+  }
+  
+  int sockfd = socket->socketDescriptor();
+  if (sockfd == -1) {
+    if (error_message) {
+      *error_message = QStringLiteral("Failed to get socket descriptor");
+    }
+    return false;
+  }
+  
+  // 创建 FreeRDP 对等体
+  freerdp_peer *peer = freerdp_peer_new(sockfd);
+  if (!peer) {
+    if (error_message) {
+      *error_message = QStringLiteral("Failed to create FreeRDP peer");
+    }
+    return false;
+  }
+  
+  // 设置本地地址和主机名
+  struct sockaddr_storage peer_addr;
+  socklen_t peer_addr_len = sizeof(peer_addr);
+  if (getpeername(sockfd, (struct sockaddr*)&peer_addr, &peer_addr_len) == -1) {
+    if (error_message) {
+      *error_message = QStringLiteral("Failed to get peer address");
+    }
+    freerdp_peer_free(peer);
+    return false;
+  }
+  
+  if (!freerdp_peer_set_local_and_hostname(peer, &peer_addr)) {
+    if (error_message) {
+      *error_message = QStringLiteral("Failed to set peer local and hostname");
+    }
+    freerdp_peer_free(peer);
+    return false;
+  }
+  
+  // 创建 RDP 会话
+  auto *session = new DrdQtRdpSession(peer, this);
+  
+  // 设置会话属性
+  session->setPeerAddress(socket->peerAddress().toString());
+  
   sessions_.append(session);
   QObject::connect(session, &QObject::destroyed, this,
                    [this, session]() { sessions_.removeAll(session); });

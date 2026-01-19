@@ -1580,19 +1580,28 @@ gboolean
 drd_rdp_listener_start(DrdRdpListener *self, GError **error)
 {
     g_return_val_if_fail(DRD_IS_RDP_LISTENER(self), FALSE);
+    
+    DRD_LOG_MESSAGE("Starting RDP listener on %s:%u",
+                    self->bind_address != NULL ? self->bind_address : "0.0.0.0",
+                    self->port);
 
     if (!drd_rdp_listener_bind(self, error))
     {
+        DRD_LOG_CRITICAL("Failed to bind RDP listener on %s:%u - %s",
+                        self->bind_address != NULL ? self->bind_address : "0.0.0.0",
+                        self->port,
+                        error != NULL && *error != NULL ? (*error)->message : "Unknown error");
         return FALSE;
     }
 
     if (drd_rdp_listener_is_system_mode(self) && self->cancellable == NULL)
     {
         self->cancellable = g_cancellable_new();
+        DRD_LOG_DEBUG("Created cancellable for system mode listener");
     }
 
     g_socket_service_start(G_SOCKET_SERVICE(self));
-    DRD_LOG_MESSAGE("Socket service armed for %s:%u",
+    DRD_LOG_MESSAGE("Socket service successfully started on %s:%u",
                     self->bind_address != NULL ? self->bind_address : "0.0.0.0",
                     self->port);
 

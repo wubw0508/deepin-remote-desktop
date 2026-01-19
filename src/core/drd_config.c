@@ -332,10 +332,13 @@ drd_config_load_from_key_file(DrdConfig *self, GKeyFile *keyfile, GError **error
 {
     gboolean nla_auth_override = FALSE;
 
+    DRD_LOG_MESSAGE("Loading configuration from key file");
+
     if (g_key_file_has_key(keyfile, "server", "bind_address", NULL))
     {
         g_clear_pointer(&self->bind_address, g_free);
         self->bind_address = g_key_file_get_string(keyfile, "server", "bind_address", NULL);
+        DRD_LOG_MESSAGE("Loaded server/bind_address: %s", self->bind_address);
     }
 
     if (g_key_file_has_key(keyfile, "server", "port", NULL))
@@ -350,6 +353,7 @@ drd_config_load_from_key_file(DrdConfig *self, GKeyFile *keyfile, GError **error
             return FALSE;
         }
         self->port = (guint16) port;
+        DRD_LOG_MESSAGE("Loaded server/port: %u", self->port);
     }
 
     g_clear_pointer(&self->certificate_path, g_free);
@@ -361,6 +365,7 @@ drd_config_load_from_key_file(DrdConfig *self, GKeyFile *keyfile, GError **error
         g_clear_pointer(&self->certificate_path, g_free);
         self->certificate_path = drd_config_resolve_path(self, value);
         g_free(value);
+        DRD_LOG_MESSAGE("Loaded tls/certificate: %s", self->certificate_path);
     }
 
     if (g_key_file_has_key(keyfile, "tls", "private_key", NULL))
@@ -369,6 +374,7 @@ drd_config_load_from_key_file(DrdConfig *self, GKeyFile *keyfile, GError **error
         g_clear_pointer(&self->private_key_path, g_free);
         self->private_key_path = drd_config_resolve_path(self, value);
         g_free(value);
+        DRD_LOG_MESSAGE("Loaded tls/private_key: %s", self->private_key_path);
     }
 
     if (g_key_file_has_key(keyfile, "capture", "width", NULL))
@@ -539,18 +545,20 @@ drd_config_load_from_key_file(DrdConfig *self, GKeyFile *keyfile, GError **error
         }
         self->encoding.gfx_progressive_refresh_timeout_ms = (guint) timeout_ms;
     }
+if (g_key_file_has_key(keyfile, "auth", "username", NULL))
+{
+    g_clear_pointer(&self->nla_username, g_free);
+    self->nla_username = g_key_file_get_string(keyfile, "auth", "username", NULL);
+    DRD_LOG_MESSAGE("Loaded auth/username: %s", self->nla_username);
+}
 
-    if (g_key_file_has_key(keyfile, "auth", "username", NULL))
-    {
-        g_clear_pointer(&self->nla_username, g_free);
-        self->nla_username = g_key_file_get_string(keyfile, "auth", "username", NULL);
-    }
+if (g_key_file_has_key(keyfile, "auth", "password", NULL))
+{
+    g_clear_pointer(&self->nla_password, g_free);
+    self->nla_password = g_key_file_get_string(keyfile, "auth", "password", NULL);
+    DRD_LOG_MESSAGE("Loaded auth/password: [REDACTED]");
+}
 
-    if (g_key_file_has_key(keyfile, "auth", "password", NULL))
-    {
-        g_clear_pointer(&self->nla_password, g_free);
-        self->nla_password = g_key_file_get_string(keyfile, "auth", "password", NULL);
-    }
 
     if (g_key_file_has_key(keyfile, "auth", "mode", NULL))
     {

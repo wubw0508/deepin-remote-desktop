@@ -16,25 +16,34 @@ DrdQtConfig::DrdQtConfig(QObject *parent) : QObject(parent) {
   values_["pam_service"] = "deepin-remote-desktop";
   values_["capture_target_fps"] = 60;
   values_["capture_stats_interval_sec"] = 5;
+  // 初始化证书和密钥路径，避免合并时验证失败
+  values_["certificate_path"] = QString();
+  values_["private_key_path"] = QString();
 }
 
 bool DrdQtConfig::drd_config_load_from_file(const QString &path,
                                              QString *error_message) {
+  qInfo() << "Loading configuration from file:" << path;
+  
   if (!QFile::exists(path)) {
     if (error_message) {
       *error_message = QString("Config file not found: %1").arg(path);
     }
+    qWarning() << "Config file not found:" << path;
     return false;
   }
 
   QSettings settings(path, QSettings::IniFormat);
+  qInfo() << "Successfully opened config file:" << path;
 
   // 加载服务器配置
   if (settings.contains("server/bind_address")) {
     values_["bind_address"] = settings.value("server/bind_address").toString();
+    qInfo() << "Loaded server/bind_address:" << values_["bind_address"].toString();
   }
   if (settings.contains("server/port")) {
     values_["port"] = settings.value("server/port").toInt();
+    qInfo() << "Loaded server/port:" << values_["port"].toInt();
   }
 
   // 加载 TLS 配置
@@ -44,6 +53,7 @@ bool DrdQtConfig::drd_config_load_from_file(const QString &path,
       cert_path = QDir(QFileInfo(path).absolutePath()).filePath(cert_path);
     }
     values_["certificate_path"] = cert_path;
+    qInfo() << "Loaded tls/certificate:" << values_["certificate_path"].toString();
   }
   if (settings.contains("tls/private_key")) {
     QString key_path = settings.value("tls/private_key").toString();
@@ -51,49 +61,64 @@ bool DrdQtConfig::drd_config_load_from_file(const QString &path,
       key_path = QDir(QFileInfo(path).absolutePath()).filePath(key_path);
     }
     values_["private_key_path"] = key_path;
+    qInfo() << "Loaded tls/private_key:" << values_["private_key_path"].toString();
+  }
+
+  // 加载认证配置（NLA凭据）
+  if (settings.contains("auth/username")) {
+    values_["nla_username"] = settings.value("auth/username").toString();
+    qInfo() << "Loaded auth/username:" << values_["nla_username"].toString();
+  }
+  if (settings.contains("auth/password")) {
+    values_["nla_password"] = settings.value("auth/password").toString();
+    qInfo() << "Loaded auth/password: [REDACTED]";
   }
 
   // 加载采集配置
   if (settings.contains("capture/width")) {
     values_["capture_width"] = settings.value("capture/width").toInt();
+    qInfo() << "Loaded capture/width:" << values_["capture_width"].toInt();
   }
   if (settings.contains("capture/height")) {
     values_["capture_height"] = settings.value("capture/height").toInt();
+    qInfo() << "Loaded capture/height:" << values_["capture_height"].toInt();
   }
   if (settings.contains("capture/target_fps")) {
     values_["capture_target_fps"] = settings.value("capture/target_fps").toInt();
+    qInfo() << "Loaded capture/target_fps:" << values_["capture_target_fps"].toInt();
   }
   if (settings.contains("capture/stats_interval_sec")) {
     values_["capture_stats_interval_sec"] = settings.value("capture/stats_interval_sec").toInt();
+    qInfo() << "Loaded capture/stats_interval_sec:" << values_["capture_stats_interval_sec"].toInt();
   }
 
   // 加载编码配置
   if (settings.contains("encoding/mode")) {
     values_["encoding_mode"] = settings.value("encoding/mode").toString();
+    qInfo() << "Loaded encoding/mode:" << values_["encoding_mode"].toString();
   }
   if (settings.contains("encoding/enable_diff")) {
     values_["enable_frame_diff"] = settings.value("encoding/enable_diff").toBool();
+    qInfo() << "Loaded encoding/enable_diff:" << values_["enable_frame_diff"].toBool();
   }
 
   // 加载认证配置
-  if (settings.contains("auth/username")) {
-    values_["nla_username"] = settings.value("auth/username").toString();
-  }
-  if (settings.contains("auth/password")) {
-    values_["nla_password"] = settings.value("auth/password").toString();
-  }
   if (settings.contains("auth/enable_nla")) {
     values_["nla_enabled"] = settings.value("auth/enable_nla").toBool();
+    qInfo() << "Loaded auth/enable_nla:" << values_["nla_enabled"].toBool();
   }
   if (settings.contains("auth/pam_service")) {
     values_["pam_service"] = settings.value("auth/pam_service").toString();
+    qInfo() << "Loaded auth/pam_service:" << values_["pam_service"].toString();
   }
 
   // 加载服务配置
   if (settings.contains("service/runtime_mode")) {
     values_["runtime_mode"] = settings.value("service/runtime_mode").toString();
+    qInfo() << "Loaded service/runtime_mode:" << values_["runtime_mode"].toString();
   }
 
+  qInfo() << "Configuration loaded successfully from file:" << path;
   return true;
 }
 
@@ -188,19 +213,29 @@ bool DrdQtConfig::drd_config_merge_cli(const QVariantMap &cli_values,
 
   // 验证必要的配置项
   QString runtime_mode = values_["runtime_mode"].toString();
-  if (runtime_mode != "handover" && (!values_.contains("certificate_path") || !values_.contains("private_key_path"))) {
-    if (error_message) {
-      *error_message = "TLS certificate and private key must be specified for non-handover modes";
+  if (runtime_mode != "handover") {
+    // 检查证书和密钥路径是否为空（而不是是否存在于values_中）
+    QString cert_path = values_["certificate_path"].toString();
+    QString key_path = values_["private_key_path"].toString();
+    if (cert_path.isEmpty() || key_path.isEmpty()) {
+      if (error_message) {
+        *error_message = "TLS certificate and private key must be specified for non-handover modes";
+      }
+      return false;
     }
-    return false;
   }
 
   bool nla_enabled = values_["nla_enabled"].toBool();
-  if (nla_enabled && runtime_mode != "handover" && (!values_.contains("nla_username") || !values_.contains("nla_password"))) {
-    if (error_message) {
-      *error_message = "NLA username and password must be specified for NLA-enabled modes";
+  if (nla_enabled && runtime_mode != "handover") {
+    // 检查NLA凭据是否为空
+    QString username = values_["nla_username"].toString();
+    QString password = values_["nla_password"].toString();
+    if (username.isEmpty() || password.isEmpty()) {
+      if (error_message) {
+        *error_message = "NLA username and password must be specified for NLA-enabled modes";
+      }
+      return false;
     }
-    return false;
   }
 
   if (!nla_enabled && runtime_mode != "system") {

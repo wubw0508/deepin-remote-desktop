@@ -201,14 +201,14 @@ int DrdQtApplication::drd_application_run(const QStringList &arguments,
         }
     } else {
         // 启动 RDP 监听器 (默认 user 模式)
-            DrdQtTransport transport;
+            auto *transport = new DrdQtTransport();
             QVariantMap encoding_options;
             encoding_options["mode"] = config->drd_config_get_string("encoding_mode");
             encoding_options["enable_diff"] = config->drd_config_get_bool("enable_frame_diff");
             encoding_options["width"] = config->drd_config_get_int("capture_width");
             encoding_options["height"] = config->drd_config_get_int("capture_height");
             
-            QObject *listener = transport.drd_rdp_listener_new(
+            QObject *listener = transport->drd_rdp_listener_new(
                 config->drd_config_get_string("bind_address"),
                 config->drd_config_get_int("port"),
                 runtime.data(),
@@ -220,7 +220,7 @@ int DrdQtApplication::drd_application_run(const QStringList &arguments,
                 config->drd_config_get_string("runtime_mode")
             );
             
-            if (transport.drd_rdp_listener_start(listener, error_message)) {
+            if (transport->drd_rdp_listener_start(listener, error_message)) {
                 qDebug() << "RDP service listening on" << config->drd_config_get_string("bind_address") << ":" << config->drd_config_get_int("port");
                 qDebug() << "Loaded TLS credentials (cert=" << config->drd_config_get_string("certificate_path") << ", key=" << config->drd_config_get_string("private_key_path") << ")";
                 started = true;
