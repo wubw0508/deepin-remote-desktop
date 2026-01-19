@@ -1,5 +1,6 @@
 
 #include "drd_rdp_session.h"
+#include "drd_rdp_session.moc"
 
 #include <QThread>
 #include <QDateTime>

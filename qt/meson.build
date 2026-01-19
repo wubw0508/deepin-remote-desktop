@@ -1,5 +1,39 @@
 qt_inc = include_directories('.')
 
+# 生成 Qt 元对象代码
+moc_sources = []
+
+# 使用 Qt 6 版本的 moc 工具
+moc_cmd = '/usr/lib/qt6/libexec/moc'
+
+# DrdQtRdpSession 的 MOC 处理
+drd_rdp_session_moc = custom_target('drd_rdp_session_moc',
+                                   input: 'session/drd_rdp_session.h',
+                                   output: 'drd_rdp_session.moc',
+                                   command: [moc_cmd, '-o', '@OUTPUT@', '@INPUT@'])
+moc_sources += drd_rdp_session_moc
+
+# DrdQtRdpGraphicsPipeline 的 MOC 处理
+drd_rdp_graphics_pipeline_moc = custom_target('drd_rdp_graphics_pipeline_moc',
+                                              input: 'session/drd_rdp_graphics_pipeline.h',
+                                              output: 'drd_rdp_graphics_pipeline.moc',
+                                              command: [moc_cmd, '-o', '@OUTPUT@', '@INPUT@'])
+moc_sources += drd_rdp_graphics_pipeline_moc
+
+# DrdQtRdpListener 的 MOC 处理 - 定义在 drd_transport.h 中
+drd_rdp_listener_moc = custom_target('drd_rdp_listener_moc',
+                                     input: 'transport/drd_transport.h',
+                                     output: 'drd_rdp_listener.moc',
+                                     command: [moc_cmd, '-o', '@OUTPUT@', '@INPUT@'])
+moc_sources += drd_rdp_listener_moc
+
+# DrdQtTlsCredentials 的 MOC 处理
+drd_tls_credentials_moc = custom_target('drd_tls_credentials_moc',
+                                        input: 'security/drd_tls_credentials.h',
+                                        output: 'drd_tls_credentials.moc',
+                                        command: [moc_cmd, '-o', '@OUTPUT@', '@INPUT@'])
+moc_sources += drd_tls_credentials_moc
+
 qt_core_sources = files(
   'core/drd_runtime.cpp',
   'core/drd_application.cpp',
@@ -11,14 +45,15 @@ qt_core_sources = files(
 qt_session_sources = files(
   'session/drd_rdp_session.cpp',
   'session/drd_rdp_graphics_pipeline.cpp'
-)
-qt_transport_sources = files('transport/drd_transport.cpp')
+) + [drd_rdp_session_moc, drd_rdp_graphics_pipeline_moc]
+
+qt_transport_sources = files('transport/drd_transport.cpp') + [drd_rdp_listener_moc]
 qt_security_sources = files(
   'security/drd_security.cpp',
   'security/drd_tls_credentials.cpp',
   'security/drd_local_session.cpp',
   'security/drd_nla_sam.cpp'
-)
+) + [drd_tls_credentials_moc]
 qt_capture_sources = files(
   'capture/drd_capture_manager.cpp',
   'capture/drd_x11_capture.cpp'
@@ -39,39 +74,39 @@ drd_qt_core = static_library('drd-qt-core',
                              dependencies: [qt_dep])
 
 drd_qt_session = static_library('drd-qt-session',
-                                qt_session_sources,
-                                include_directories: qt_inc,
-                                dependencies: [qt_dep, freerdp_server_dep, freerdp_core_dep, winpr_dep])
+                                 qt_session_sources,
+                                 include_directories: qt_inc,
+                                 dependencies: [qt_dep, freerdp_server_dep, freerdp_core_dep, winpr_dep])
 
 drd_qt_transport = static_library('drd-qt-transport',
-                                  qt_transport_sources,
-                                  include_directories: qt_inc,
-                                  dependencies: [qt_dep, freerdp_server_dep, freerdp_core_dep, winpr_dep])
+                                   qt_transport_sources,
+                                   include_directories: qt_inc,
+                                   dependencies: [qt_dep, freerdp_server_dep, freerdp_core_dep, winpr_dep])
 
 drd_qt_security = static_library('drd-qt-security',
-                                 qt_security_sources,
-                                 include_directories: qt_inc,
-                                 dependencies: [qt_dep])
+                                  qt_security_sources,
+                                  include_directories: qt_inc,
+                                  dependencies: [qt_dep])
 
 drd_qt_capture = static_library('drd-qt-capture',
-                                qt_capture_sources,
-                                include_directories: qt_inc,
-                                dependencies: [qt_dep])
-
-drd_qt_encoding = static_library('drd-qt-encoding',
-                                 qt_encoding_sources,
+                                 qt_capture_sources,
                                  include_directories: qt_inc,
                                  dependencies: [qt_dep])
 
-drd_qt_input = static_library('drd-qt-input',
-                              qt_input_sources,
-                              include_directories: qt_inc,
-                              dependencies: [qt_dep])
+drd_qt_encoding = static_library('drd-qt-encoding',
+                                  qt_encoding_sources,
+                                  include_directories: qt_inc,
+                                  dependencies: [qt_dep])
 
-drd_qt_system = static_library('drd-qt-system',
-                               qt_system_sources,
+drd_qt_input = static_library('drd-qt-input',
+                               qt_input_sources,
                                include_directories: qt_inc,
                                dependencies: [qt_dep])
+
+drd_qt_system = static_library('drd-qt-system',
+                                qt_system_sources,
+                                include_directories: qt_inc,
+                                dependencies: [qt_dep])
 
 drd_qt_includes = qt_inc
 

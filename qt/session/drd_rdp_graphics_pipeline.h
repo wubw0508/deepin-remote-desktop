@@ -13,7 +13,6 @@ class DrdQtServerRuntime;
 
 class DrdQtRdpGraphicsPipeline : public QObject {
     Q_OBJECT
-
 public:
     explicit DrdQtRdpGraphicsPipeline(freerdp_peer *peer,
                                      HANDLE vcm,

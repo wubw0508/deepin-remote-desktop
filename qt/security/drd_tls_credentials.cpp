@@ -1,4 +1,5 @@
 #include "drd_tls_credentials.h"
+#include "drd_tls_credentials.moc"
 
 DrdQtTlsCredentials::DrdQtTlsCredentials(QObject *parent) : QObject(parent) {}
 

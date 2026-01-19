@@ -14,7 +14,6 @@ class DrdQtRdpGraphicsPipeline;
 
 class DrdQtRdpSession : public QObject {
     Q_OBJECT
-
 public:
     enum Error {
         ErrorNone = 0,

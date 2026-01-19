@@ -1,4 +1,5 @@
 #include "drd_transport.h"
+#include "drd_rdp_listener.moc"
 
 #include <QByteArray>
 #include <QHostAddress>

@@ -1,4 +1,5 @@
 #include "drd_rdp_graphics_pipeline.h"
+#include "drd_rdp_graphics_pipeline.moc"
 
 #include <QDateTime>
 #include <QDebug>
