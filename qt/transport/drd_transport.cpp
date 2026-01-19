@@ -1,6 +1,9 @@
 #include "drd_transport.h"
 #include "drd_rdp_listener.moc"
 
+#include "core/drd_server_runtime.h"
+#include "security/drd_tls_credentials.h"
+
 #include <QByteArray>
 #include <QHostAddress>
 #include <QList>
@@ -49,6 +52,173 @@ QString read_routing_token(const QByteArray &buffer, int start, int *line_end) {
   *line_end = end;
   const int token_start = start + prefix.size();
   return QString::fromLatin1(buffer.mid(token_start, end - token_start));
+}
+
+// 配置 FreeRDP 对等体设置
+bool configure_peer_settings(freerdp_peer *peer, DrdQtRdpListener *listener, QString *error_message) {
+  if (!peer || !peer->context) {
+    if (error_message) {
+      *error_message = QStringLiteral("Invalid peer context");
+    }
+    return false;
+  }
+
+  rdpSettings *settings = peer->context->settings;
+  if (!settings) {
+    if (error_message) {
+      *error_message = QStringLiteral("Failed to get peer settings");
+    }
+    return false;
+  }
+
+  // 获取 TLS 证书
+  DrdQtServerRuntime *runtime = qobject_cast<DrdQtServerRuntime*>(listener->runtime());
+  if (!runtime) {
+    if (error_message) {
+      *error_message = QStringLiteral("Invalid server runtime");
+    }
+    return false;
+  }
+
+  DrdQtTlsCredentials *tls = runtime->tlsCredentials();
+  if (!tls) {
+    if (error_message) {
+      *error_message = QStringLiteral("TLS credentials not configured");
+    }
+    return false;
+  }
+
+  if (!tls->apply(settings, error_message)) {
+    return false;
+  }
+
+  // 配置安全设置
+  if (listener->nla_enabled()) {
+    // NLA 安全模式
+    if (!freerdp_settings_set_bool(settings, FreeRDP_TlsSecurity, false) ||
+        !freerdp_settings_set_bool(settings, FreeRDP_NlaSecurity, true) ||
+        !freerdp_settings_set_bool(settings, FreeRDP_RdpSecurity, false)) {
+      if (error_message) {
+        *error_message = QStringLiteral("Failed to configure NLA security flags");
+      }
+      return false;
+    }
+  } else {
+    // TLS 安全模式
+    if (!freerdp_settings_set_bool(settings, FreeRDP_TlsSecurity, true) ||
+        !freerdp_settings_set_bool(settings, FreeRDP_NlaSecurity, false) ||
+        !freerdp_settings_set_bool(settings, FreeRDP_RdpSecurity, false)) {
+      if (error_message) {
+        *error_message = QStringLiteral("Failed to configure TLS security flags");
+      }
+      return false;
+    }
+    qInfo() << "Peer will authenticate via TLS/PAM service" << listener->pam_service();
+  }
+
+  // 配置桌面尺寸和颜色深度
+  const int width = listener->encoding_options().value("width", 1024).toInt();
+  const int height = listener->encoding_options().value("height", 768).toInt();
+  if (width == 0 || height == 0) {
+    if (error_message) {
+      *error_message = QStringLiteral("Encoding geometry is not configured");
+    }
+    return false;
+  }
+
+  if (!freerdp_settings_set_uint32(settings, FreeRDP_DesktopWidth, width) ||
+      !freerdp_settings_set_uint32(settings, FreeRDP_DesktopHeight, height) ||
+      !freerdp_settings_set_uint32(settings, FreeRDP_ColorDepth, 32) ||
+      !freerdp_settings_set_bool(settings, FreeRDP_ServerMode, true) ||
+      !freerdp_settings_set_bool(settings, FreeRDP_SurfaceFrameMarkerEnabled, true) ||
+      !freerdp_settings_set_bool(settings, FreeRDP_FrameMarkerCommandEnabled, true) ||
+      !freerdp_settings_set_bool(settings, FreeRDP_FastPathOutput, true) ||
+      !freerdp_settings_set_bool(settings, FreeRDP_NetworkAutoDetect, true) ||
+      !freerdp_settings_set_bool(settings, FreeRDP_RefreshRect, false) ||
+      !freerdp_settings_set_bool(settings, FreeRDP_SupportDisplayControl, false) ||
+      !freerdp_settings_set_bool(settings, FreeRDP_SupportMonitorLayoutPdu, false) ||
+      !freerdp_settings_set_bool(settings, FreeRDP_RemoteFxCodec, true) ||
+      !freerdp_settings_set_bool(settings, FreeRDP_RemoteFxImageCodec, true) ||
+      !freerdp_settings_set_bool(settings, FreeRDP_NSCodec, false) ||
+      !freerdp_settings_set_bool(settings, FreeRDP_GfxH264, true) ||
+      !freerdp_settings_set_bool(settings, FreeRDP_GfxAVC444v2, false) ||
+      !freerdp_settings_set_bool(settings, FreeRDP_GfxAVC444, false) ||
+      !freerdp_settings_set_bool(settings, FreeRDP_GfxProgressive, true) ||
+      !freerdp_settings_set_bool(settings, FreeRDP_GfxProgressiveV2, true) ||
+      !freerdp_settings_set_bool(settings, FreeRDP_SupportGraphicsPipeline, true) ||
+      !freerdp_settings_set_bool(settings, FreeRDP_HasExtendedMouseEvent, true) ||
+      !freerdp_settings_set_bool(settings, FreeRDP_HasHorizontalWheel, true) ||
+      !freerdp_settings_set_bool(settings, FreeRDP_HasRelativeMouseEvent, false) ||
+      !freerdp_settings_set_bool(settings, FreeRDP_UnicodeInput, true) ||
+      !freerdp_settings_set_bool(settings, FreeRDP_HasQoeEvent, false) ||
+      !freerdp_settings_set_uint32(settings, FreeRDP_EncryptionLevel, ENCRYPTION_LEVEL_CLIENT_COMPATIBLE) ||
+      !freerdp_settings_set_uint32(settings, FreeRDP_VCFlags, VCCAPS_COMPR_SC) ||
+      !freerdp_settings_set_uint32(settings, FreeRDP_VCChunkSize, 16256) ||
+      !freerdp_settings_set_uint32(settings, FreeRDP_PointerCacheSize, 100) ||
+      !freerdp_settings_set_uint32(settings, FreeRDP_MultifragMaxRequestSize, 0) ||
+      !freerdp_settings_set_uint32(settings, FreeRDP_OsMajorType, OSMAJORTYPE_UNIX) ||
+      !freerdp_settings_set_uint32(settings, FreeRDP_OsMinorType, OSMINORTYPE_PSEUDO_XSERVER) ||
+      !freerdp_settings_set_bool(settings, FreeRDP_GfxSmallCache, false) ||
+      !freerdp_settings_set_bool(settings, FreeRDP_GfxThinClient, true) ||
+      !freerdp_settings_set_bool(settings, FreeRDP_SupportMultitransport, false)) {
+    if (error_message) {
+      *error_message = QStringLiteral("Failed to configure peer settings");
+    }
+    return false;
+  }
+
+  // 配置 RDSTLS 模式
+  if (listener->is_handover_mode()) {
+    if (!freerdp_settings_set_bool(settings, FreeRDP_RdstlsSecurity, true)) {
+      if (error_message) {
+        *error_message = QStringLiteral("Failed to enable RDSTLS security flags");
+      }
+      return false;
+    }
+  }
+
+  return true;
+}
+
+// 初始化 FreeRDP 对等体
+bool initialize_peer(freerdp_peer *peer, DrdQtRdpSession *session, const QString &peer_name, QString *error_message) {
+  // 初始化对等体
+  if (!peer->Initialize || !peer->Initialize(peer)) {
+    if (error_message) {
+      *error_message = QStringLiteral("Failed to initialize peer");
+    }
+    return false;
+  }
+
+  // 打开虚拟通道管理器
+  HANDLE vcm = WTSOpenServerA((LPSTR)peer->context);
+  if (!vcm || vcm == INVALID_HANDLE_VALUE) {
+    if (error_message) {
+      *error_message = QStringLiteral("Failed to create virtual channel manager");
+    }
+    return false;
+  }
+
+  session->setVirtualChannelManager(vcm);
+
+  // 启动事件线程
+  if (!session->startEventThread()) {
+    if (error_message) {
+      *error_message = QStringLiteral("Failed to start event thread");
+    }
+    WTSCloseServer(vcm);
+    return false;
+  }
+
+  // 检查输入接口
+  if (peer->context && peer->context->input) {
+    rdpInput *input = peer->context->input;
+    input->context = peer->context;
+    // 可以在这里设置输入事件处理函数
+  }
+
+  qInfo() << "Accepted connection from" << peer_name;
+  return true;
 }
 
 } // namespace
@@ -224,7 +394,7 @@ bool DrdQtRdpListener::adopt_connection(QIODevice *connection,
     }
     return false;
   }
-  
+
   // 设置本地地址和主机名
   struct sockaddr_storage peer_addr;
   socklen_t peer_addr_len = sizeof(peer_addr);
@@ -235,7 +405,7 @@ bool DrdQtRdpListener::adopt_connection(QIODevice *connection,
     freerdp_peer_free(peer);
     return false;
   }
-  
+
   if (!freerdp_peer_set_local_and_hostname(peer, &peer_addr)) {
     if (error_message) {
       *error_message = QStringLiteral("Failed to set peer local and hostname");
@@ -243,13 +413,38 @@ bool DrdQtRdpListener::adopt_connection(QIODevice *connection,
     freerdp_peer_free(peer);
     return false;
   }
-  
+
+  // 关键修复：必须先设置上下文大小，然后调用 freerdp_peer_context_new 来初始化 peer->context
+  // 这是与 C 版本 src/transport/drd_rdp_listener.c 保持一致的做法
+  peer->ContextSize = sizeof(rdpContext); // 设置上下文大小
+  if (!freerdp_peer_context_new(peer)) { // 初始化上下文
+    if (error_message) {
+      *error_message = QStringLiteral("Failed to allocate peer context");
+    }
+    freerdp_peer_free(peer);
+    return false;
+  }
+
+  // 配置 FreeRDP 对等体设置
+  if (!configure_peer_settings(peer, this, error_message)) {
+    freerdp_peer_free(peer);
+    return false;
+  }
+
   // 创建 RDP 会话
   auto *session = new DrdQtRdpSession(peer, this);
-  
+
   // 设置会话属性
   session->setPeerAddress(socket->peerAddress().toString());
-  
+  session->setRuntime(qobject_cast<DrdQtServerRuntime*>(runtime_));
+
+  // 初始化 FreeRDP 对等体
+  if (!initialize_peer(peer, session, socket->peerAddress().toString(), error_message)) {
+    delete session;
+    freerdp_peer_free(peer);
+    return false;
+  }
+
   sessions_.append(session);
   QObject::connect(session, &QObject::destroyed, this,
                    [this, session]() { sessions_.removeAll(session); });

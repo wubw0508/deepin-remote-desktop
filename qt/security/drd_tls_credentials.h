@@ -3,6 +3,8 @@
 #include <QObject>
 #include <QString>
 
+typedef struct rdp_settings rdpSettings;
+
 class DrdQtTlsCredentials : public QObject {
   Q_OBJECT
 
@@ -19,6 +21,8 @@ public:
   QString drd_tls_credentials_private_key_path() const;
   QString drd_tls_credentials_certificate_pem() const;
   QString drd_tls_credentials_private_key_pem() const;
+
+  bool apply(rdpSettings *settings, QString *error_message);
 
 private:
   QString certificate_path_;

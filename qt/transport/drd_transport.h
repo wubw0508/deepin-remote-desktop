@@ -39,6 +39,10 @@ public:
   bool adopt_connection(QIODevice *connection, QString *error_message);
   bool is_handover_mode() const;
 
+  bool nla_enabled() const { return nla_enabled_; }
+  QString pam_service() const { return pam_service_; }
+  QVariantMap encoding_options() const { return encoding_options_; }
+
 private:
   QString bind_address_;
   quint16 port_ = 0;

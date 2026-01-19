@@ -29,10 +29,17 @@ moc_sources += drd_rdp_listener_moc
 
 # DrdQtTlsCredentials 的 MOC 处理
 drd_tls_credentials_moc = custom_target('drd_tls_credentials_moc',
-                                        input: 'security/drd_tls_credentials.h',
-                                        output: 'drd_tls_credentials.moc',
-                                        command: [moc_cmd, '-o', '@OUTPUT@', '@INPUT@'])
+                                         input: 'security/drd_tls_credentials.h',
+                                         output: 'drd_tls_credentials.moc',
+                                         command: [moc_cmd, '-o', '@OUTPUT@', '@INPUT@'])
 moc_sources += drd_tls_credentials_moc
+
+# DrdQtServerRuntime 的 MOC 处理
+drd_server_runtime_moc = custom_target('drd_server_runtime_moc',
+                                       input: 'core/drd_server_runtime.h',
+                                       output: 'drd_server_runtime.moc',
+                                       command: [moc_cmd, '-o', '@OUTPUT@', '@INPUT@'])
+moc_sources += drd_server_runtime_moc
 
 qt_core_sources = files(
   'core/drd_runtime.cpp',
@@ -41,7 +48,7 @@ qt_core_sources = files(
   'core/drd_server_runtime.cpp',
   'core/drd_encoding_options.cpp',
   'core/drd_dbus_constants.cpp'
-)
+) + [drd_server_runtime_moc]
 qt_session_sources = files(
   'session/drd_rdp_session.cpp',
   'session/drd_rdp_graphics_pipeline.cpp'
@@ -84,9 +91,9 @@ drd_qt_transport = static_library('drd-qt-transport',
                                    dependencies: [qt_dep, freerdp_server_dep, freerdp_core_dep, winpr_dep])
 
 drd_qt_security = static_library('drd-qt-security',
-                                  qt_security_sources,
-                                  include_directories: qt_inc,
-                                  dependencies: [qt_dep])
+                                   qt_security_sources,
+                                   include_directories: qt_inc,
+                                   dependencies: [qt_dep, freerdp_server_dep, freerdp_core_dep, winpr_dep])
 
 drd_qt_capture = static_library('drd-qt-capture',
                                  qt_capture_sources,
