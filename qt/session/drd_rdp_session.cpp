@@ -207,6 +207,70 @@ DrdQtLocalSession *DrdQtRdpSession::localSession() const {
     return localSession_;
 }
 
+// C风格的回调函数
+static BOOL drd_peer_post_connect(freerdp_peer* peer) {
+    DrdQtRdpSession* session = nullptr;
+    // 这里需要一种方法从peer中获取DrdQtRdpSession实例
+    // 注意：在Qt版本中，我们需要找到一种关联方式
+    // 暂时返回true，需要进一步实现
+    return TRUE;
+}
+
+static BOOL drd_peer_activate(freerdp_peer* peer) {
+    DrdQtRdpSession* session = nullptr;
+    // 这里需要一种方法从peer中获取DrdQtRdpSession实例
+    return TRUE;
+}
+
+static BOOL drd_peer_capabilities(freerdp_peer* peer) {
+    DrdQtRdpSession* session = nullptr;
+    // 这里需要一种方法从peer中获取DrdQtRdpSession实例
+    return TRUE;
+}
+
+static void drd_peer_disconnected(freerdp_peer* peer) {
+    DrdQtRdpSession* session = nullptr;
+    // 这里需要一种方法从peer中获取DrdQtRdpSession实例
+}
+
+bool DrdQtRdpSession::capabilities() {
+    setPeerState("capabilities");
+    if (!peer_ || !peer_->context) {
+        return false;
+    }
+    
+    rdpSettings* settings = peer_->context->settings;
+    if (!settings) {
+        return false;
+    }
+    
+    const quint32 client_width = freerdp_settings_get_uint32(settings, FreeRDP_DesktopWidth);
+    const quint32 client_height = freerdp_settings_get_uint32(settings, FreeRDP_DesktopHeight);
+    const bool desktop_resize = freerdp_settings_get_bool(settings, FreeRDP_DesktopResize);
+    
+    if (!vcm_ || vcm_ == INVALID_HANDLE_VALUE) {
+        qWarning() << "Session" << peerAddress_ << "missing virtual channel manager during capability exchange";
+        notifyError(ErrorBadCaps);
+        return false;
+    }
+    
+    if (!WTSVirtualChannelManagerIsChannelJoined(vcm_, DRDYNVC_SVC_CHANNEL_NAME)) {
+        qWarning() << "Session" << peerAddress_ << "does not support DRDYNVC, rejecting connection";
+        notifyError(ErrorBadCaps);
+        return false;
+    }
+    
+    if (!desktop_resize) {
+        qWarning() << "Session" << peerAddress_ << "disabled DesktopResize capability (client" << client_width << "x" << client_height << "), rejecting connection";
+        setPeerState("desktop-resize-unsupported");
+        notifyError(ErrorBadCaps);
+        return false;
+    }
+    
+    qInfo() << "Session" << peerAddress_ << "capabilities accepted with DesktopResize enabled (" << client_width << "x" << client_height << "requested)";
+    return true;
+}
+
 bool DrdQtRdpSession::postConnect() {
     setPeerState("post-connect");
     return true;

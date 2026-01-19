@@ -17,10 +17,74 @@
 
 namespace {
 
+// 自定义的上下文结构体，用于关联DrdQtRdpSession
+struct DrdQtRdpPeerContext {
+    rdpContext context;
+    DrdQtRdpSession* session;
+};
+
 constexpr quint8 kTpktVersion = 3;
 constexpr quint32 kProtocolRdstls = 0x00000004;
 constexpr int kMinTpktLength = 4 + 7;
 constexpr char kRoutingTokenPrefix[] = "Cookie: msts=";
+
+// 上下文创建回调
+static BOOL drd_peer_context_new(freerdp_peer* peer, rdpContext* context) {
+    DrdQtRdpPeerContext* ctx = reinterpret_cast<DrdQtRdpPeerContext*>(context);
+    ctx->session = nullptr; // 初始化为空，稍后设置
+    return TRUE;
+}
+
+// 上下文释放回调
+static void drd_peer_context_free(freerdp_peer* peer, rdpContext* context) {
+    Q_UNUSED(peer);
+    DrdQtRdpPeerContext* ctx = reinterpret_cast<DrdQtRdpPeerContext*>(context);
+    ctx->session = nullptr;
+}
+
+// 功能回调函数
+static BOOL drd_peer_post_connect(freerdp_peer* peer) {
+    if (!peer || !peer->context) {
+        return FALSE;
+    }
+    DrdQtRdpPeerContext* ctx = reinterpret_cast<DrdQtRdpPeerContext*>(peer->context);
+    if (ctx && ctx->session) {
+        return ctx->session->postConnect() ? TRUE : FALSE;
+    }
+    return FALSE;
+}
+
+static BOOL drd_peer_activate(freerdp_peer* peer) {
+    if (!peer || !peer->context) {
+        return FALSE;
+    }
+    DrdQtRdpPeerContext* ctx = reinterpret_cast<DrdQtRdpPeerContext*>(peer->context);
+    if (ctx && ctx->session) {
+        return ctx->session->activate() ? TRUE : FALSE;
+    }
+    return FALSE;
+}
+
+static BOOL drd_peer_capabilities(freerdp_peer* peer) {
+    if (!peer || !peer->context) {
+        return FALSE;
+    }
+    DrdQtRdpPeerContext* ctx = reinterpret_cast<DrdQtRdpPeerContext*>(peer->context);
+    if (ctx && ctx->session) {
+        return ctx->session->capabilities() ? TRUE : FALSE;
+    }
+    return FALSE;
+}
+
+static void drd_peer_disconnected(freerdp_peer* peer) {
+    if (!peer || !peer->context) {
+        return;
+    }
+    DrdQtRdpPeerContext* ctx = reinterpret_cast<DrdQtRdpPeerContext*>(peer->context);
+    if (ctx && ctx->session) {
+        ctx->session->disconnect("peer disconnected");
+    }
+}
 
 bool runtime_mode_matches(const QString &runtime_mode_name,
                           const char *expected) {
@@ -182,6 +246,29 @@ bool configure_peer_settings(freerdp_peer *peer, DrdQtRdpListener *listener, QSt
 
 // 初始化 FreeRDP 对等体
 bool initialize_peer(freerdp_peer *peer, DrdQtRdpSession *session, const QString &peer_name, QString *error_message) {
+  // 设置自定义上下文相关的回调
+  peer->ContextSize = sizeof(DrdQtRdpPeerContext);
+  peer->ContextNew = drd_peer_context_new;
+  peer->ContextFree = drd_peer_context_free;
+  
+  // 初始化对等体上下文
+  if (!freerdp_peer_context_new(peer)) {
+    if (error_message) {
+      *error_message = QStringLiteral("Failed to allocate peer context");
+    }
+    return false;
+  }
+  
+  // 关联DrdQtRdpSession实例
+  DrdQtRdpPeerContext* ctx = reinterpret_cast<DrdQtRdpPeerContext*>(peer->context);
+  ctx->session = session;
+  
+  // 设置功能回调
+  peer->PostConnect = drd_peer_post_connect;
+  peer->Activate = drd_peer_activate;
+  peer->Capabilities = drd_peer_capabilities;
+  peer->Disconnect = drd_peer_disconnected;
+  
   // 初始化对等体
   if (!peer->Initialize || !peer->Initialize(peer)) {
     if (error_message) {
@@ -414,23 +501,6 @@ bool DrdQtRdpListener::adopt_connection(QIODevice *connection,
     return false;
   }
 
-  // 关键修复：必须先设置上下文大小，然后调用 freerdp_peer_context_new 来初始化 peer->context
-  // 这是与 C 版本 src/transport/drd_rdp_listener.c 保持一致的做法
-  peer->ContextSize = sizeof(rdpContext); // 设置上下文大小
-  if (!freerdp_peer_context_new(peer)) { // 初始化上下文
-    if (error_message) {
-      *error_message = QStringLiteral("Failed to allocate peer context");
-    }
-    freerdp_peer_free(peer);
-    return false;
-  }
-
-  // 配置 FreeRDP 对等体设置
-  if (!configure_peer_settings(peer, this, error_message)) {
-    freerdp_peer_free(peer);
-    return false;
-  }
-
   // 创建 RDP 会话
   auto *session = new DrdQtRdpSession(peer, this);
 
@@ -438,8 +508,15 @@ bool DrdQtRdpListener::adopt_connection(QIODevice *connection,
   session->setPeerAddress(socket->peerAddress().toString());
   session->setRuntime(qobject_cast<DrdQtServerRuntime*>(runtime_));
 
-  // 初始化 FreeRDP 对等体
+  // 先初始化 FreeRDP 对等体上下文
   if (!initialize_peer(peer, session, socket->peerAddress().toString(), error_message)) {
+    delete session;
+    freerdp_peer_free(peer);
+    return false;
+  }
+
+  // 然后配置 FreeRDP 对等体设置
+  if (!configure_peer_settings(peer, this, error_message)) {
     delete session;
     freerdp_peer_free(peer);
     return false;

@@ -48,6 +48,7 @@ public:
 
     bool postConnect();
     bool activate();
+    bool capabilities();
     bool pump();
     void disconnect(const QString &reason = QString());
     void notifyError(Error error);
