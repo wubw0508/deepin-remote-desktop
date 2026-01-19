@@ -208,6 +208,17 @@ int DrdQtApplication::drd_application_run(const QStringList &arguments,
             encoding_options["width"] = config->drd_config_get_int("capture_width");
             encoding_options["height"] = config->drd_config_get_int("capture_height");
             
+            // 加载 TLS 证书和私钥
+            if (!tls_credentials->drd_tls_credentials_load(
+                    config->drd_config_get_string("certificate_path"),
+                    config->drd_config_get_string("private_key_path"),
+                    error_message)) {
+                return 1;
+            }
+            
+            // 将 TLS 凭据设置到运行时
+            runtime->setTlsCredentials(tls_credentials.data());
+            
             QObject *listener = transport->drd_rdp_listener_new(
                 config->drd_config_get_string("bind_address"),
                 config->drd_config_get_int("port"),

@@ -13,6 +13,7 @@
 
 #include "core/drd_dbus_constants.h"
 #include "security/drd_tls_credentials.h"
+#include "core/drd_server_runtime.h"
 #include "transport/drd_transport.h"
 
 namespace {
@@ -201,6 +202,12 @@ bool DrdQtHandoverDaemon::start(QString *error_message) {
                                                         key_pem,
                                                         error_message)) {
     return false;
+  }
+  
+  // 将 TLS 凭据设置到运行时
+  auto *server_runtime = qobject_cast<DrdQtServerRuntime*>(runtime_);
+  if (server_runtime) {
+    server_runtime->setTlsCredentials(credentials);
   }
 
   if (error_message) {
