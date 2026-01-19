@@ -172,7 +172,9 @@ bool DrdQtRdpListener::adopt_connection(QIODevice *connection,
       return true;
     }
   }
-  auto *session = new DrdQtRdpSession(this);
+  // TODO: Create FreeRDP peer and initialize RDP session
+  // For now, create a basic session without FreeRDP peer
+  auto *session = new DrdQtRdpSession(nullptr, this);
   sessions_.append(session);
   QObject::connect(session, &QObject::destroyed, this,
                    [this, session]() { sessions_.removeAll(session); });

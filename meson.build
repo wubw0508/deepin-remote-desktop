@@ -18,6 +18,13 @@ add_project_arguments([
   '-Wno-unused-parameter'
 ], language: 'c')
 
+add_project_arguments([
+  '-Wno-pedantic',
+  '-Wno-unused-function',
+  '-Wno-unused-variable',
+  '-Wno-unused-parameter'
+], language: 'cpp')
+
 cc = meson.get_compiler('c')
 pam_dep = dependency('pam', required: false)
 if not pam_dep.found()
@@ -43,5 +50,4 @@ vaapi_dep = dependency('libva', required: true)
 qt_dep = dependency('qt6', modules: ['Core', 'DBus', 'Network'], required: true)
 
 subdir('qt')
-subdir('src')
 subdir('data')

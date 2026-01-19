@@ -9,7 +9,6 @@ qt_core_sources = files(
   'core/drd_dbus_constants.cpp'
 )
 qt_session_sources = files(
-  'session/drd_session.cpp',
   'session/drd_rdp_session.cpp',
   'session/drd_rdp_graphics_pipeline.cpp'
 )
@@ -42,12 +41,12 @@ drd_qt_core = static_library('drd-qt-core',
 drd_qt_session = static_library('drd-qt-session',
                                 qt_session_sources,
                                 include_directories: qt_inc,
-                                dependencies: [qt_dep])
+                                dependencies: [qt_dep, freerdp_server_dep, freerdp_core_dep, winpr_dep])
 
 drd_qt_transport = static_library('drd-qt-transport',
                                   qt_transport_sources,
                                   include_directories: qt_inc,
-                                  dependencies: [qt_dep])
+                                  dependencies: [qt_dep, freerdp_server_dep, freerdp_core_dep, winpr_dep])
 
 drd_qt_security = static_library('drd-qt-security',
                                  qt_security_sources,
