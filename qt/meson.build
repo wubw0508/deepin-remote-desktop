@@ -85,3 +85,15 @@ drd_qt_libs = [
   drd_qt_input,
   drd_qt_system
 ]
+
+# 可执行文件
+drd_qt_exe = executable('deepin-remote-desktop',
+                        files('main.cpp'),
+                        include_directories: qt_inc,
+                        dependencies: [qt_dep, freerdp_server_dep, freerdp_core_dep, winpr_dep,
+                                       glib_dep, gio_dep, gio_unix_dep, gobject_dep,
+                                       x11_dep, xext_dep, xdamage_dep, xfixes_dep, xtst_dep,
+                                       pam_dep, avcodec_dep, avutil_dep, swscale_dep, vaapi_dep],
+                        link_with: drd_qt_libs,
+                        install: true,
+                        install_dir: get_option('bindir'))
