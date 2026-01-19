@@ -3,7 +3,7 @@
 ## 模块划分
 - `src/capture`, `src/encoding`, `src/input`, `src/utils`: 提供采集、编码、输入与通用缓冲实现。
 - `src/core`, `src/session`, `src/transport`, `src/security`: 负责配置解析、运行时、FreeRDP 监听与 TLS。
-- `main.c`: 应用入口。Meson 直接将上述源文件编译成单一的 `deepin-remote-desktop` 可执行文件，不再生成中间静态库。
+- `main.cpp`: 应用入口。Meson 直接将上述源文件编译成单一的 `deepin-remote-desktop` 可执行文件，不再生成中间静态库。
 
 ## 构建与运行
 

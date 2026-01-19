@@ -15,7 +15,7 @@ core 模块是应用的入口与配置中心，负责：
 
 ### 主入口
 
-- **文件**: `src/main.c`
+- **文件**: `src/main.cpp`
 - **流程**:
   1. 初始化 WinPR (SSL + WTS API)
   2. 创建 `DrdApplication`

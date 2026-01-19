@@ -18,7 +18,8 @@ deps = [
   avcodec_dep,
   avutil_dep,
   swscale_dep,
-  vaapi_dep
+  vaapi_dep,
+  qt6_dep
 ]
 
 media_sources = files(
@@ -63,7 +64,7 @@ core_sources += dbus_gen_lightdm
 exe_sources = []
 exe_sources += media_sources
 exe_sources += core_sources
-exe_sources += files('main.c')
+exe_sources += files('main.cpp')
 
 executable('deepin-remote-desktop', exe_sources,
            include_directories: src_inc,

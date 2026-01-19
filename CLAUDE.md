@@ -40,7 +40,7 @@ graph TD
     SRC --> ENCODING["encoding/"]
     SRC --> INPUT["input/"]
     SRC --> UTILS["utils/"]
-    SRC --> MAIN["main.c"]
+    SRC --> MAIN["main.cpp"]
 
     ROOT --> DATA["data/"]
     ROOT --> DOC["doc/"]
@@ -185,7 +185,7 @@ export WLOG_LEVEL=debug
 ### 已识别的模块结构
 
 #### 核心源代码 (23 源文件，27 头文件)
-- `src/main.c` - 程序入口
+- `src/main.cpp` - 程序入口
 - `src/core/` - 应用、配置、运行时
 - `src/session/` - RDP 会话、图形管线
 - `src/transport/` - 监听器、路由 token

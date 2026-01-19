@@ -1,5 +1,13 @@
 # 变更记录
 
+## 2026-XX-XX：入口改为 Qt Core Application
+- **目的**：将入口改为 Qt Core Application，便于后续 Qt 化集成，同时保持现有运行逻辑。
+- **范围**：`src/main.cpp`、`meson.build`、`src/meson.build`、`doc/changelog.md`、`doc/task-qt-core-entry.md`。
+- **主要改动**：
+  1. 入口文件切换为 `main.cpp`，引入 `QCoreApplication` 承载 Qt 运行时。
+  2. 构建系统启用 C++ 并加入 Qt6 Core 依赖，保持其余源文件不变。
+- **影响**：主程序已具备 Qt Core 初始化能力，其他模块逻辑与运行路径保持一致。
+
 ## 2026-XX-XX：PAM 认证模块重命名
 - **目的**：将 PAM 认证模块从 `drd_local_session` 更名为 `drd_pam_auth`，明确语义并统一命名风格。
 - **范围**：`src/security/drd_pam_auth.[ch]`、`src/session/drd_rdp_session.[ch]`、`src/transport/drd_rdp_listener.c`、`src/system/drd_system_daemon.c`、`doc/architecture.md`、`doc/uml/key-data-structures.puml`、`doc/changelog.md`。

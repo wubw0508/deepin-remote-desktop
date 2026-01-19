@@ -1,7 +1,7 @@
 # Repository Guidelines
 
 ## Project Structure & Module Organization
-`deepin-remote-desktop` groups screen acquisition and input helpers inside `src/capture`, `src/encoding`, `src/input`, and `src/utils` (packed as `libdrd-media.a`). Runtime glue, session state machines, RDP transport, and security hooks live in `src/core`, `src/session`, `src/transport`, and `src/security`, while `main.c` stays minimal. Config samples plus TLS fixtures live in `config/` and `certs/`; generated binaries stay inside `build/`. Architecture notes and task history are under `doc/`. Keep developer scratch pads inside `buildDir/` only—never commit them.
+`deepin-remote-desktop` groups screen acquisition and input helpers inside `src/capture`, `src/encoding`, `src/input`, and `src/utils` (packed as `libdrd-media.a`). Runtime glue, session state machines, RDP transport, and security hooks live in `src/core`, `src/session`, `src/transport`, and `src/security`, while `main.cpp` stays minimal. Config samples plus TLS fixtures live in `config/` and `certs/`; generated binaries stay inside `build/`. Architecture notes and task history are under `doc/`. Keep developer scratch pads inside `buildDir/` only—never commit them.
 
 ## Build, Test, and Development Commands
 All workflows flow through Meson:

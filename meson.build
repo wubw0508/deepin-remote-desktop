@@ -1,7 +1,8 @@
-project('deepin_remote_desktop', 'c',
+project('deepin_remote_desktop', ['c', 'cpp'],
         version: '0.1.0',
         default_options: [
           'c_std=c17',
+          'cpp_std=c++17',
           'warning_level=3',
           'werror=true'
         ])
@@ -39,6 +40,7 @@ avcodec_dep = dependency('libavcodec', required: true)
 avutil_dep = dependency('libavutil', required: true)
 swscale_dep = dependency('libswscale', required: true)
 vaapi_dep = dependency('libva', required: true)
+qt6_dep = dependency('qt6', modules: ['Core'], required: true)
 
 subdir('src')
 subdir('data')
