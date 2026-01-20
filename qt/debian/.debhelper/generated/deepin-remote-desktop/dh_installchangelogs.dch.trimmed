@@ -1,0 +1,15 @@
+deepin-remote-desktop (1.0.4) UNRELEASED; urgency=medium
+
+  * d
+  * dd
+  * d
+  * d
+  * d
+
+ -- Deepin Remote Desktop Team <uos@uos>  Wed, 21 Jan 2026 09:46:07 +0800
+
+deepin-remote-desktop (0.1.0-1) unstable; urgency=medium
+
+  * Initial Debian packaging for Meson-based build.
+
+ -- Deepin Remote Desktop Team <deepin@uniontech.com>  Tue, 25 Nov 2025 14:52:06 +0800

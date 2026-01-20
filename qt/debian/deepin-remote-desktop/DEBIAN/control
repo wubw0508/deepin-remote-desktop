@@ -1,0 +1,14 @@
+Package: deepin-remote-desktop
+Version: 1.0.4
+Architecture: amd64
+Maintainer: Deepin Remote Desktop Team <deepin@uniontech.com>
+Installed-Size: 142
+Depends: libc6 (>= 2.34), libfreerdp3-3 (>= 3.0.0), libgcc-s1 (>= 3.0), libqt6core6 (>= 6.8.0), libqt6network6 (>= 6.1.2), libstdc++6 (>= 5), libwinpr3-3 (>= 3.0.0), init-system-helpers (>= 1.52)
+Section: net
+Priority: optional
+Homepage: https://github.com/linuxdeepin/deepin-remote-desktop
+Description: Deepin Remote Desktop RDP service
+ A GLib-based RDP service providing capture/encoding/input pipeline,
+ FreeRDP transport integration, and system/handover daemons for Deepin
+ desktop. It targets systemd-managed deployments and ships greeter
+ handover helpers plus sample configuration.

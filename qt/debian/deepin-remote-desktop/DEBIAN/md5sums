@@ -1,0 +1,12 @@
+ab536f4930e15156e3a9205418dafb8b  usr/bin/deepin-remote-desktop
+55a18e66d72e4503a045d6f79e13258a  usr/lib/systemd/system/deepin-remote-desktop-system.service
+7195976219face9525a76f3218b2d65e  usr/lib/systemd/user/deepin-remote-desktop-handover.service
+1909ae90ab36be39a6e80c3cc9f29171  usr/lib/systemd/user/deepin-remote-desktop-user.service
+7d2c49539e8a95532661abb3189fb40c  usr/share/deepin-remote-desktop/certs/server.crt
+146aeac4d1e4c774d939069d86aa84c0  usr/share/deepin-remote-desktop/certs/server.key
+e8deccdf93f1124395932db1a86ff225  usr/share/deepin-remote-desktop/config.d/default-handover.ini
+2193135d1e41aea0faf7703485f4743c  usr/share/deepin-remote-desktop/config.d/default-pam-system.ini
+36c45ebb2fabd9e93d853cabb2d6678d  usr/share/deepin-remote-desktop/config.d/default-system.ini
+b99f05da6412df1e5715d08c63c6ad92  usr/share/deepin-remote-desktop/config.d/default-user.ini
+5ab7d4ad6cb12432b1ef7f6881afc163  usr/share/deepin-remote-desktop/config.d/full-example.ini
+4b89dc042800a0159db72beabc31ecb2  usr/share/doc/deepin-remote-desktop/changelog.gz

@@ -1,0 +1,12 @@
+Package: deepin-remote-desktop-dbgsym
+Source: deepin-remote-desktop
+Version: 1.0.4
+Auto-Built-Package: debug-symbols
+Architecture: amd64
+Maintainer: Deepin Remote Desktop Team <deepin@uniontech.com>
+Installed-Size: 876
+Depends: deepin-remote-desktop (= 1.0.4)
+Section: debug
+Priority: optional
+Description: debug symbols for deepin-remote-desktop
+Build-Ids: 4828a924b53f16ba0d23e6522a5dfab7a51dac92

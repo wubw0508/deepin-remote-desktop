@@ -1,0 +1,7 @@
+debian/tmp/usr/bin/deepin-remote-desktop
+debian/tmp/usr/lib/systemd/system/deepin-remote-desktop-system.service
+debian/tmp/usr/lib/systemd/user/deepin-remote-desktop-handover.service
+debian/tmp/usr/lib/systemd/user/deepin-remote-desktop-user.service
+debian/tmp/usr/share/deepin-remote-desktop/
+debian/tmp/etc/dbus-1/system.d/org.deepin.RemoteDesktop.conf
+debian/tmp/etc/deepin/greeters.d/11-deepin-remote-desktop-handover
