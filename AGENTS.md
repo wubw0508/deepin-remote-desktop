@@ -1,29 +1,67 @@
-# Repository Guidelines
+# PROJECT KNOWLEDGE BASE
 
-## Project Structure & Module Organization
-`deepin-remote-desktop` groups screen acquisition and input helpers inside `src/capture`, `src/encoding`, `src/input`, and `src/utils` (packed as `libdrd-media.a`). Runtime glue, session state machines, RDP transport, and security hooks live in `src/core`, `src/session`, `src/transport`, and `src/security`, while `main.c` stays minimal. Config samples plus TLS fixtures live in `config/` and `certs/`; generated binaries stay inside `build/`. Architecture notes and task history are under `doc/`. Keep developer scratch pads inside `buildDir/` only—never commit them.
+**Generated:** 2026-01-21 10:18:10 CST
+**Commit:** 02e245c
+**Branch:** master
 
-## Build, Test, and Development Commands
-All workflows flow through Meson:
-```bash
-meson setup build                      # configure (add -Dbuildtype=debug for assertions)
-meson compile -C build                 # build libs + deepin-remote-desktop
-./build/src/deepin-remote-desktop --config ./config/default.ini  # local smoke
-meson test -C build --suite unit       # run GLib-based suites
+## OVERVIEW
+deepin-remote-desktop is a C17 + GLib/GObject + FreeRDP 3.x RDP server with three runtime modes (user/system/handover) and DBus-driven handover.
+
+## STRUCTURE
 ```
-Use `meson compile -C build session/drd_rdp_session.c.o` when iterating on a single TU, and rerun the binary after touching config or TLS helpers.
+./
+├── src/                    # C17 core sources (single executable)
+│   ├── core/               # config, application, runtime glue
+│   ├── session/            # RDP session state machine, graphics pipeline
+│   ├── transport/          # listener, routing token, TLS/NLA setup
+│   ├── security/           # TLS credentials, PAM, NLA SAM
+│   ├── system/             # system/handover daemons
+│   ├── capture/            # X11 capture
+│   ├── encoding/           # RFX/H264 encoding
+│   ├── input/              # X11 input injection
+│   └── utils/              # frames, queues, logging, metrics
+├── data/                   # config templates, certs, systemd units, DBus policy
+├── doc/                    # architecture, changelog, task logs
+├── debian/                 # packaging rules
+└── build/                  # meson output (ignored)
+```
 
-## Coding Style & Naming Conventions
-Target C17 with GLib/GObject. Indent with four spaces, wrap arguments past 120 columns, and keep headers free of unrelated declarations. Types/structs use `PascalCase` (`DrdRdpSession`), functions/variables use `snake_case`, and macros remain `DRD_*`. Logs (`g_message`, `g_warning`) must stay in English, whereas inline comments should justify tricky GLib or FreeRDP interactions. Run `clang-format -style=LLVM` on edited regions before review.
+## WHERE TO LOOK
+| Task | Location | Notes |
+|------|----------|-------|
+| App entry + CLI | `src/main.c`, `src/core/drd_application.c` | bootstraps GLib main loop |
+| Config merge | `src/core/drd_config.c` | INI + CLI merge, encoding options |
+| Session state | `src/session/drd_rdp_session.c` | render thread, lifecycle |
+| GFX pipeline | `src/session/drd_rdp_graphics_pipeline.c` | Rdpgfx ACK/backpressure |
+| Listener | `src/transport/drd_rdp_listener.c` | TLS/NLA, mode branching |
+| Handover | `src/system/drd_system_daemon.c`, `src/system/drd_handover_daemon.c` | DBus dispatcher |
+| Encoding | `src/encoding/drd_encoding_manager.c` | RFX/H264, dirty rects |
+| X11 capture | `src/capture/drd_x11_capture.c` | XDamage/XShm |
+| Input | `src/input/drd_x11_input.c` | XTest injection |
+| TLS/PAM/NLA | `src/security/` | credential setup |
 
-## Testing Guidelines
-Add new GLib tests beside the implementation (e.g., `src/session/tests/test_rdp_session.c`) and register them via `g_test_add()`. Name cases `test_<module>_<scenario>` and cover at least the happy path plus one failure. For concurrency-heavy code, run `meson test -C build --repeat=2 --setup=ci` to expose races, then record FPS or rdpgfx stats from the smoke command in the PR description.
+## CONVENTIONS
+- Single executable build: all module sources compile into `deepin-remote-desktop` (no intermediate static libs).
+- Logs must be in English (`g_message`, `g_warning`); inline comments are in Chinese.
+- Format edited C regions with `clang-format -style=LLVM` (120 column limit).
 
-## Documentation Updates
-Maintain architecture notes in `doc/architecture.md`. Log each task with purpose, scope, changes, and impact under `doc/` (use `doc/task-*.md` naming). Keep `doc/changelog.md` aligned with behavior changes.
+## ANTI-PATTERNS (THIS PROJECT)
+- Do not store personal keys in `data/certs/`.
+- Do not commit scratch files outside `buildDir/`.
+- Do not edit `doc/TODO.md` unless explicitly requested.
 
-## Commit & Pull Request Guidelines
-Commit messages follow the repo norm: concise Chinese subject with optional English tail (`session: 收敛 Rdpgfx ACK timeout`). Reference issues in the body when applicable. PRs must explain motivation, outline validation (meson compile/test + smoke run), and attach logs or packet traces when editing transport/session/TLS layers. Link to updated `doc/architecture.md` sections whenever diagrams change.
+## UNIQUE STYLES
+- DBus handover workflow (system/handover daemons + routing token).
+- GObject-based modules with shared utilities in `src/utils/`.
 
-## Security & Configuration Tips
-Treat `certs/` as disposable dev material; regenerate with `openssl req` instead of uploading personal keys. Keep `.ini` credentials to the provided `[auth]` placeholders and restart the daemon whenever you change TLS or NLA inputs because credentials are cached once per runtime. When sharing logs externally, redact hostnames and IPs before posting.
+## COMMANDS
+```bash
+meson setup build --prefix=/usr --buildtype=debugoptimized
+meson compile -C build
+meson test -C build --suite unit
+./build/src/deepin-remote-desktop --config ./data/config.d/default-user.ini
+```
+
+## NOTES
+- Runtime modes: user (desktop share), system (remote login), handover (connection take-over).
+- DBus interfaces are generated via `gnome.gdbus_codegen()` from `src/*.xml`.

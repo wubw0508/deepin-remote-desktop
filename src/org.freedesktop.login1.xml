@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<node>
+  <interface name="org.freedesktop.login1.Manager">
+    <method name="ListSessions">
+      <arg name="sessions" type="a(susso)" direction="out"/>
+    </method>
+    <method name="TerminateSession">
+      <arg name="id" type="s" direction="in"/>
+    </method>
+  </interface>
+  <interface name="org.freedesktop.login1.Session">
+    <property name="Type" type="s" access="read"/>
+    <property name="Remote" type="b" access="read"/>
+  </interface>
+</node>
