@@ -1,3 +1,0 @@
-misc:Depends=init-system-helpers (>= 1.52)
-shlibs:Depends=libc6 (>= 2.34), libfreerdp3-3 (>= 3.0.0), libgcc-s1 (>= 3.0), libqt6core6 (>= 6.8.0), libqt6network6 (>= 6.1.2), libstdc++6 (>= 5), libwinpr3-3 (>= 3.0.0)
-misc:Pre-Depends=

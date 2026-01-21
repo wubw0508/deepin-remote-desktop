@@ -2,17 +2,21 @@
 
 #include <QObject>
 #include <QString>
+#include <QList>
+#include <QPointer>
 
 #include "core/drd_encoding_options.h"
 
 // 前向声明
 class DrdServerRuntime;
+class DrdRdpSession;
 class QTcpServer;
 
 /**
  * @brief Qt 版本的 DrdRdpListener 类
  * 
  * 替代 GObject 版本的 DrdRdpListener，使用 Qt 的对象系统
+ * 监听 RDP 连接并管理会话
  */
 class DrdRdpListener : public QObject
 {
@@ -75,6 +79,27 @@ public:
      */
     bool isSingleLogin() const { return m_isSingleLogin; }
 
+    /**
+     * @brief 获取编码选项
+     */
+    const DrdEncodingOptions &encodingOptions() const { return m_encodingOptions; }
+
+    /**
+     * @brief 是否启用 NLA
+     */
+    bool nlaEnabled() const { return m_nlaEnabled; }
+
+    /**
+     * @brief 检查是否有活动会话
+     */
+    bool hasActiveSession() const { return !m_sessions.isEmpty(); }
+
+    /**
+     * @brief 处理会话关闭
+     * @param session 关闭的会话
+     */
+    void handleSessionClosed(DrdRdpSession *session);
+
 private slots:
     /**
      * @brief 处理传入的连接
@@ -93,4 +118,5 @@ private:
     QString m_pamService;
     DrdRuntimeMode m_runtimeMode;
     bool m_isSingleLogin;
+    QList<QPointer<DrdRdpSession>> m_sessions;
 };

@@ -56,6 +56,7 @@ add_executable(deepin-remote-desktop
     core/drd_config.cpp
     core/drd_server_runtime.cpp
     security/drd_tls_credentials.cpp
+    session/drd_rdp_session.cpp
     transport/drd_rdp_listener.cpp
     system/drd_system_daemon.cpp
     system/drd_handover_daemon.cpp

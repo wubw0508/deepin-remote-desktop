@@ -101,7 +101,7 @@ bool DrdTlsCredentials::apply(rdpSettings *settings, QString *error)
     }
 
     // 重新解析证书（因为 FreeRDP 可能需要新的实例）
-    rdpCertificate *certificate = freerdp_certificate_new_from_pem(m_certificatePath.toUtf8().constData());
+    rdpCertificate *certificate = freerdp_certificate_new_from_file(m_certificatePath.toUtf8().constData());
     if (certificate == nullptr)
     {
         if (error)
@@ -112,7 +112,7 @@ bool DrdTlsCredentials::apply(rdpSettings *settings, QString *error)
     }
 
     // 重新解析私钥
-    rdpPrivateKey *key = freerdp_key_new_from_pem(m_privateKeyPath.toUtf8().constData());
+    rdpPrivateKey *key = freerdp_key_new_from_file(m_privateKeyPath.toUtf8().constData());
     if (key == nullptr)
     {
         freerdp_certificate_free(certificate);
@@ -209,9 +209,6 @@ bool DrdTlsCredentials::readMaterial(QString *certificate, QString *key, QString
  */
 bool DrdTlsCredentials::reloadFromPem(const QString &certificatePem, const QString &keyPem, QString *error)
 {
-    Q_UNUSED(certificatePem);
-    Q_UNUSED(keyPem);
-
     // 释放旧的证书和密钥
     if (m_certificate != nullptr)
     {
@@ -224,8 +221,8 @@ bool DrdTlsCredentials::reloadFromPem(const QString &certificatePem, const QStri
         m_privateKey = nullptr;
     }
 
-    // 解析证书
-    m_certificate = freerdp_certificate_new_from_pem(m_certificatePath.toUtf8().constData());
+    // 解析证书（使用传入的 PEM 内容）
+    m_certificate = freerdp_certificate_new_from_pem(certificatePem.toUtf8().constData());
     if (m_certificate == nullptr)
     {
         if (error)
@@ -235,8 +232,8 @@ bool DrdTlsCredentials::reloadFromPem(const QString &certificatePem, const QStri
         return false;
     }
 
-    // 解析私钥
-    m_privateKey = freerdp_key_new_from_pem(m_privateKeyPath.toUtf8().constData());
+    // 解析私钥（使用传入的 PEM 内容）
+    m_privateKey = freerdp_key_new_from_pem(keyPem.toUtf8().constData());
     if (m_privateKey == nullptr)
     {
         freerdp_certificate_free(m_certificate);

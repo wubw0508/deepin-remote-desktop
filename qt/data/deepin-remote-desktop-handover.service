@@ -8,9 +8,9 @@ Type=simple
 StandardError=journal
 StandardOutput=journal
 ExecStart=/usr/bin/deepin-remote-desktop --mode handover --config /usr/share/deepin-remote-desktop/config.d/default-handover.ini
-Restart=on-failure
-RestartSec=5
-TimeoutStartSec=30
+#Restart=on-failure
+#RestartSec=5
+#TimeoutStartSec=30
 
 [Install]
 WantedBy=graphical-session-pre.target
