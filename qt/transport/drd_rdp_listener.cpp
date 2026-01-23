@@ -3,6 +3,7 @@
 #include "core/drd_server_runtime.h"
 #include "session/drd_rdp_session.h"
 #include "security/drd_tls_credentials.h"
+#include "input/drd_x11_input.h"
 #include <freerdp/listener.h>
 #include <freerdp/settings.h>
 #include <freerdp/settings_keys.h>
@@ -848,6 +849,20 @@ void DrdRdpListener::handleIncomingConnection(QTcpServer *server)
     }
     m_sessions.append(QPointer<DrdRdpSession>(ctx->session));
     
+    // 设置输入事件回调（非 system 模式）
+    if (peer->context != nullptr && peer->context->input != nullptr)
+    {
+        rdpInput *input = peer->context->input;
+        input->context = peer->context;
+        if (!drd_rdp_listener_is_system_mode(this))
+        {
+            input->KeyboardEvent = DrdX11Input::drd_rdp_peer_keyboard_event_x11;
+            input->UnicodeKeyboardEvent = DrdX11Input::drd_rdp_peer_unicode_event_x11;
+            input->MouseEvent = DrdX11Input::drd_rdp_peer_pointer_event_x11;
+            input->ExtendedMouseEvent = DrdX11Input::drd_rdp_peer_extended_pointer_event;
+        }
+    }
+
     qInfo() << "Accepted connection from" << peerName;
     
     // 关闭 Qt socket（FreeRDP 现在拥有文件描述符）

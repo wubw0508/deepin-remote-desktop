@@ -50,6 +50,9 @@ find_package(X11 REQUIRED COMPONENTS Xext)
 pkg_check_modules(XDAMAGE REQUIRED xdamage)
 pkg_check_modules(XFIXES REQUIRED xfixes)
 
+# 查找XTest库
+find_package(X11 REQUIRED COMPONENTS Xtst)
+
 # 包含目录
 include_directories(
     ${CMAKE_SOURCE_DIR}
@@ -89,6 +92,7 @@ add_executable(deepin-remote-desktop
     capture/drd_capture_manager.cpp
     capture/drd_x11_capture.cpp
     encoding/drd_encoding_manager.cpp
+    input/drd_x11_input.cpp
 )
 
 # 链接库
@@ -101,6 +105,7 @@ target_link_libraries(deepin-remote-desktop
     ${GLIB_LIBRARIES}
     ${X11_LIBRARIES}
     ${X11_Xext_LIB}
+    ${X11_Xtst_LIB}
     ${XDAMAGE_LIBRARIES}
     ${XFIXES_LIBRARIES}
 )
