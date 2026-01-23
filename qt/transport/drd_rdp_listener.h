@@ -11,6 +11,13 @@
 class DrdServerRuntime;
 class DrdRdpSession;
 class QTcpServer;
+class QTcpSocket;
+
+// FreeRDP 类型已经在 freerdp.h 中定义，不需要重复声明
+#include <freerdp/freerdp.h>
+
+// 前向声明
+class DrdRdpSession;
 
 /**
  * @brief Qt 版本的 DrdRdpListener 类
@@ -90,15 +97,49 @@ public:
     bool nlaEnabled() const { return m_nlaEnabled; }
 
     /**
+     * @brief 获取运行模式
+     */
+    DrdRuntimeMode runtimeMode() const { return m_runtimeMode; }
+
+    /**
      * @brief 检查是否有活动会话
      */
     bool hasActiveSession() const { return !m_sessions.isEmpty(); }
+
+    /**
+     * @brief 会话回调函数类型
+     */
+    typedef void (*SessionCallbackFunc)(DrdRdpListener *listener,
+                                        DrdRdpSession *session,
+                                        void *user_data);
+
+    /**
+     * @brief 设置会话回调函数
+     * @param func 回调函数
+     * @param user_data 用户数据
+     */
+    void setSessionCallback(SessionCallbackFunc func, void *user_data = nullptr);
 
     /**
      * @brief 处理会话关闭
      * @param session 关闭的会话
      */
     void handleSessionClosed(DrdRdpSession *session);
+
+    /**
+     * @brief 调用会话回调（供静态函数使用）
+     * @param session 会话对象
+     */
+    void invokeSessionCallback(DrdRdpSession *session);
+
+private:
+    /**
+     * @brief 从 QTcpSocket 创建 FreeRDP peer
+     * @param socket Qt TCP socket
+     * @param error 错误信息输出
+     * @return 成功返回 FreeRDP peer 指针，失败返回 nullptr
+     */
+    freerdp_peer *drd_rdp_listener_peer_from_connection(QTcpSocket *socket, QString *error = nullptr);
 
 private slots:
     /**
@@ -119,4 +160,6 @@ private:
     DrdRuntimeMode m_runtimeMode;
     bool m_isSingleLogin;
     QList<QPointer<DrdRdpSession>> m_sessions;
+    SessionCallbackFunc m_sessionCallback;
+    void *m_sessionCallbackData;
 };

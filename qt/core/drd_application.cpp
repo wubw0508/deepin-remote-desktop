@@ -17,7 +17,6 @@
 #include "transport/drd_rdp_listener.h"
 #include "system/drd_system_daemon.h"
 #include "system/drd_handover_daemon.h"
-#include "utils/drd_log.h"
 
 /**
  * @brief 运行时上下文快照结构体
@@ -90,11 +89,11 @@ QString DrdApplication::runtimeModeToString(int mode)
 
 /**
  * @brief 记录生效的配置
- * 
+ *
  * 功能：输出当前生效的编码与运行模式配置。
  * 逻辑：读取配置中的编码选项与运行模式，分别记录分辨率、编码模式、差分开关、NLA 与 PAM 服务名。
  * 参数：无。
- * 外部接口：依赖 m_config 获取配置，日志通过 DRD_LOG_MESSAGE。
+ * 外部接口：依赖 m_config 获取配置，日志通过 qInfo。
  */
 void DrdApplication::logEffectiveConfig()
 {
@@ -106,25 +105,23 @@ void DrdApplication::logEffectiveConfig()
     const DrdEncodingOptions *encodingOpts = m_config->encodingOptions();
     if (encodingOpts)
     {
-        DRD_LOG_MESSAGE("Effective capture geometry %ux%u, encoder=%s, frame diff %s",
-                        encodingOpts->width,
-                        encodingOpts->height,
-                        drdEncodingModeToString(encodingOpts->mode).toUtf8().constData(),
-                        encodingOpts->enableFrameDiff ? "enabled" : "disabled");
+        qInfo() << "Effective capture geometry" << encodingOpts->width << "x" << encodingOpts->height
+                << ", encoder=" << drdEncodingModeToString(encodingOpts->mode)
+                << ", frame diff" << (encodingOpts->enableFrameDiff ? "enabled" : "disabled");
     }
 
     // NLA 和 PAM 已禁用，只使用 TLS 认证
-    DRD_LOG_MESSAGE("Effective authentication: TLS only, runtime=%s",
-                    runtimeModeToString(static_cast<int>(m_config->runtimeMode())).toUtf8().constData());
+    qInfo() << "Effective authentication: TLS only, runtime="
+            << runtimeModeToString(static_cast<int>(m_config->runtimeMode()));
 }
 
 /**
  * @brief 处理 SIGINT 信号
- * 
+ *
  * 功能：Unix 信号回调，触发主循环退出。
  * 逻辑：若主循环运行中且非 handover 模式则立刻退出；handover 模式下延迟 5 秒退出并记录日志。
  * 参数：无。
- * 外部接口：Qt QCoreApplication::quit，DRD_LOG_MESSAGE。
+ * 外部接口：Qt QCoreApplication::quit，qInfo。
  */
 void DrdApplication::handleSigInt()
 {
@@ -137,7 +134,7 @@ void DrdApplication::handleSigInt()
     }
     else
     {
-        DRD_LOG_MESSAGE("Termination signal received, shutting down main loop");
+        qInfo() << "Termination signal received, shutting down main loop";
         QTimer::singleShot(5000, this, [this]() {
             if (m_qtApp)
             {
@@ -263,9 +260,9 @@ bool DrdApplication::prepareRuntime(QString *error)
     DrdEncodingOptions encodingOpts = *configEncodingOpts;
     m_runtime->setEncodingOptions(&encodingOpts);
 
-    DRD_LOG_MESSAGE("Runtime initialized without capture/encoding setup "
-                    "(runtime mode=%s, TLS only authentication)",
-                    runtimeModeToString(static_cast<int>(runtimeMode)).toUtf8().constData());
+    qInfo() << "Runtime initialized without capture/encoding setup"
+            << "(runtime mode=" << runtimeModeToString(static_cast<int>(runtimeMode))
+            << ", TLS only authentication)";
 
     return true;
 }
@@ -570,8 +567,8 @@ int DrdApplication::run(int argc, char **argv, QString *error)
             started = startSystemDaemon(error);
             if (started)
             {
-                DRD_LOG_MESSAGE("System daemon exposing DBus dispatcher (%s)",
-                                runtimeModeToString(static_cast<int>(runtimeMode)).toUtf8().constData());
+                qInfo() << "System daemon exposing DBus dispatcher ("
+                        << runtimeModeToString(static_cast<int>(runtimeMode)) << ")";
             }
             break;
         case DrdRuntimeMode::Handover:
@@ -579,8 +576,8 @@ int DrdApplication::run(int argc, char **argv, QString *error)
             started = startHandoverDaemon(error);
             if (started)
             {
-                DRD_LOG_MESSAGE("Handover daemon initialized (mode=%s)",
-                                runtimeModeToString(static_cast<int>(runtimeMode)).toUtf8().constData());
+                qInfo() << "Handover daemon initialized (mode="
+                        << runtimeModeToString(static_cast<int>(runtimeMode)) << ")";
             }
             break;
         case DrdRuntimeMode::User:
@@ -588,12 +585,9 @@ int DrdApplication::run(int argc, char **argv, QString *error)
             started = startListener(error);
             if (started)
             {
-                DRD_LOG_MESSAGE("RDP service listening on %s:%u",
-                                m_config->bindAddress().toUtf8().constData(),
-                                m_config->port());
-                DRD_LOG_MESSAGE("Loaded TLS credentials (cert=%s, key=%s)",
-                                m_config->certificatePath().toUtf8().constData(),
-                                m_config->privateKeyPath().toUtf8().constData());
+                qInfo() << "RDP service listening on" << m_config->bindAddress() << ":" << m_config->port();
+                qInfo() << "Loaded TLS credentials (cert=" << m_config->certificatePath()
+                        << ", key=" << m_config->privateKeyPath() << ")";
             }
             break;
     }
@@ -609,6 +603,6 @@ int DrdApplication::run(int argc, char **argv, QString *error)
         m_qtApp->exec();
     }
 
-    DRD_LOG_MESSAGE("Main loop terminated");
+    qInfo() << "Main loop terminated";
     return EXIT_SUCCESS;
 }

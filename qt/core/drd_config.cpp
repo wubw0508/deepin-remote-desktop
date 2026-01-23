@@ -8,8 +8,6 @@
 #include <QDebug>
 #include <QCoreApplication>
 
-#include "utils/drd_log.h"
-
 /**
  * @brief 构造函数
  * 
@@ -240,7 +238,7 @@ bool DrdConfig::loadFromFile(const QString &path)
         return false;
     }
     
-    DRD_LOG_INFO("Loading config file: %s", path.toUtf8().constData());
+    qInfo() << "Loading config file:" << path;
     
     // 更新 base_dir 为配置文件所在目录
     m_baseDir = fileInfo.absolutePath();
@@ -266,13 +264,13 @@ bool DrdConfig::loadFromSettings(QSettings &settings)
     settings.beginGroup("server");
     if (settings.contains("bind_address")) {
         m_bindAddress = settings.value("bind_address").toString();
-        DRD_LOG_INFO("Config [server] bind_address: %s", m_bindAddress.toUtf8().constData());
+        qInfo() << "Config [server] bind_address:" << m_bindAddress;
     }
     if (settings.contains("port")) {
         int port = settings.value("port").toInt();
         if (port > 0 && port <= 65535) {
             m_port = static_cast<quint16>(port);
-            DRD_LOG_INFO("Config [server] port: %u", m_port);
+            qInfo() << "Config [server] port:" << m_port;
         } else {
             qWarning() << "Invalid port value:" << port;
         }
@@ -284,12 +282,12 @@ bool DrdConfig::loadFromSettings(QSettings &settings)
     if (settings.contains("certificate")) {
         QString value = settings.value("certificate").toString();
         m_certificatePath = resolvePath(value);
-        DRD_LOG_INFO("Config [tls] certificate: %s", m_certificatePath.toUtf8().constData());
+        qInfo() << "Config [tls] certificate:" << m_certificatePath;
     }
     if (settings.contains("private_key")) {
         QString value = settings.value("private_key").toString();
         m_privateKeyPath = resolvePath(value);
-        DRD_LOG_INFO("Config [tls] private_key: %s", m_privateKeyPath.toUtf8().constData());
+        qInfo() << "Config [tls] private_key:" << m_privateKeyPath;
     }
     settings.endGroup();
     
@@ -300,7 +298,7 @@ bool DrdConfig::loadFromSettings(QSettings &settings)
         if (width > 0) {
             m_captureWidth = static_cast<unsigned int>(width);
             m_encodingOptions.width = m_captureWidth;
-            DRD_LOG_INFO("Config [capture] width: %u", m_captureWidth);
+            qInfo() << "Config [capture] width:" << m_captureWidth;
         }
     }
     if (settings.contains("height")) {
@@ -308,21 +306,21 @@ bool DrdConfig::loadFromSettings(QSettings &settings)
         if (height > 0) {
             m_captureHeight = static_cast<unsigned int>(height);
             m_encodingOptions.height = m_captureHeight;
-            DRD_LOG_INFO("Config [capture] height: %u", m_captureHeight);
+            qInfo() << "Config [capture] height:" << m_captureHeight;
         }
     }
     if (settings.contains("target_fps")) {
         int target_fps = settings.value("target_fps").toInt();
         if (target_fps > 0) {
             m_captureTargetFps = static_cast<unsigned int>(target_fps);
-            DRD_LOG_INFO("Config [capture] target_fps: %u", m_captureTargetFps);
+            qInfo() << "Config [capture] target_fps:" << m_captureTargetFps;
         }
     }
     if (settings.contains("stats_interval_sec")) {
         int stats_interval = settings.value("stats_interval_sec").toInt();
         if (stats_interval > 0) {
             m_captureStatsIntervalSec = static_cast<unsigned int>(stats_interval);
-            DRD_LOG_INFO("Config [capture] stats_interval_sec: %u", m_captureStatsIntervalSec);
+            qInfo() << "Config [capture] stats_interval_sec:" << m_captureStatsIntervalSec;
         }
     }
     settings.endGroup();
@@ -334,7 +332,7 @@ bool DrdConfig::loadFromSettings(QSettings &settings)
         DrdEncodingMode parsed_mode;
         if (setModeFromString(mode, &parsed_mode)) {
             m_encodingOptions.mode = parsed_mode;
-            DRD_LOG_INFO("Config [encoding] mode: %s", mode.toUtf8().constData());
+            qInfo() << "Config [encoding] mode:" << mode;
         } else {
             qWarning() << "Unknown encoder mode:" << mode;
         }
@@ -344,28 +342,28 @@ bool DrdConfig::loadFromSettings(QSettings &settings)
         bool value = true;
         if (parseBool(diff, &value)) {
             m_encodingOptions.enableFrameDiff = value;
-            DRD_LOG_INFO("Config [encoding] enable_diff: %s", value ? "true" : "false");
+            qInfo() << "Config [encoding] enable_diff:" << (value ? "true" : "false");
         }
     }
     if (settings.contains("h264_bitrate")) {
         int bitrate = settings.value("h264_bitrate").toInt();
         if (bitrate > 0) {
             m_encodingOptions.h264Bitrate = static_cast<unsigned int>(bitrate);
-            DRD_LOG_INFO("Config [encoding] h264_bitrate: %u", m_encodingOptions.h264Bitrate);
+            qInfo() << "Config [encoding] h264_bitrate:" << m_encodingOptions.h264Bitrate;
         }
     }
     if (settings.contains("h264_framerate")) {
         int framerate = settings.value("h264_framerate").toInt();
         if (framerate > 0) {
             m_encodingOptions.h264Framerate = static_cast<unsigned int>(framerate);
-            DRD_LOG_INFO("Config [encoding] h264_framerate: %u", m_encodingOptions.h264Framerate);
+            qInfo() << "Config [encoding] h264_framerate:" << m_encodingOptions.h264Framerate;
         }
     }
     if (settings.contains("h264_qp")) {
         int qp = settings.value("h264_qp").toInt();
         if (qp > 0) {
             m_encodingOptions.h264Qp = static_cast<unsigned int>(qp);
-            DRD_LOG_INFO("Config [encoding] h264_qp: %u", m_encodingOptions.h264Qp);
+            qInfo() << "Config [encoding] h264_qp:" << m_encodingOptions.h264Qp;
         }
     }
     if (settings.contains("h264_hw_accel")) {
@@ -373,7 +371,7 @@ bool DrdConfig::loadFromSettings(QSettings &settings)
         bool value = false;
         if (parseBool(hw_accel, &value)) {
             m_encodingOptions.h264HwAccel = value;
-            DRD_LOG_INFO("Config [encoding] h264_hw_accel: %s", value ? "true" : "false");
+            qInfo() << "Config [encoding] h264_hw_accel:" << (value ? "true" : "false");
         }
     }
     if (settings.contains("h264_vm_support")) {
@@ -381,28 +379,28 @@ bool DrdConfig::loadFromSettings(QSettings &settings)
         bool value = false;
         if (parseBool(vm_support, &value)) {
             m_encodingOptions.h264VmSupport = value;
-            DRD_LOG_INFO("Config [encoding] h264_vm_support: %s", value ? "true" : "false");
+            qInfo() << "Config [encoding] h264_vm_support:" << (value ? "true" : "false");
         }
     }
     if (settings.contains("gfx_large_change_threshold")) {
         double threshold = settings.value("gfx_large_change_threshold").toDouble();
         if (threshold >= 0.0) {
             m_encodingOptions.gfxLargeChangeThreshold = threshold;
-            DRD_LOG_INFO("Config [encoding] gfx_large_change_threshold: %.2f", threshold);
+            qInfo() << "Config [encoding] gfx_large_change_threshold:" << threshold;
         }
     }
     if (settings.contains("gfx_progressive_refresh_interval")) {
         int interval = settings.value("gfx_progressive_refresh_interval").toInt();
         if (interval >= 0) {
             m_encodingOptions.gfxProgressiveRefreshInterval = static_cast<unsigned int>(interval);
-            DRD_LOG_INFO("Config [encoding] gfx_progressive_refresh_interval: %u", m_encodingOptions.gfxProgressiveRefreshInterval);
+            qInfo() << "Config [encoding] gfx_progressive_refresh_interval:" << m_encodingOptions.gfxProgressiveRefreshInterval;
         }
     }
     if (settings.contains("gfx_progressive_refresh_timeout_ms")) {
         int timeout_ms = settings.value("gfx_progressive_refresh_timeout_ms").toInt();
         if (timeout_ms >= 0) {
             m_encodingOptions.gfxProgressiveRefreshTimeoutMs = static_cast<unsigned int>(timeout_ms);
-            DRD_LOG_INFO("Config [encoding] gfx_progressive_refresh_timeout_ms: %u", m_encodingOptions.gfxProgressiveRefreshTimeoutMs);
+            qInfo() << "Config [encoding] gfx_progressive_refresh_timeout_ms:" << m_encodingOptions.gfxProgressiveRefreshTimeoutMs;
         }
     }
     settings.endGroup();
@@ -463,14 +461,14 @@ bool DrdConfig::loadFromSettings(QSettings &settings)
         DrdRuntimeMode parsed_mode;
         if (parseRuntimeMode(runtime_mode, &parsed_mode)) {
             setRuntimeMode(parsed_mode);
-            DRD_LOG_INFO("Config [service] runtime_mode: %s", runtime_mode.toUtf8().constData());
+            qInfo() << "Config [service] runtime_mode:" << runtime_mode;
         }
     } else if (settings.contains("system")) {
         QString system_value = settings.value("system").toString();
         bool system_mode = false;
         if (parseBool(system_value, &system_mode)) {
             setRuntimeMode(system_mode ? DrdRuntimeMode::System : DrdRuntimeMode::User);
-            DRD_LOG_INFO("Config [service] system: %s", system_mode ? "true" : "false");
+            qInfo() << "Config [service] system:" << (system_mode ? "true" : "false");
         }
     }
     
@@ -479,7 +477,7 @@ bool DrdConfig::loadFromSettings(QSettings &settings)
         bool rdp_sso = false;
         if (parseBool(rdp_sso_str, &rdp_sso)) {
             m_nlaEnabled = !rdp_sso;
-            DRD_LOG_INFO("Config [service] rdp_sso: %s", rdp_sso ? "true" : "false");
+            qInfo() << "Config [service] rdp_sso:" << (rdp_sso ? "true" : "false");
         }
     }
     settings.endGroup();
@@ -515,12 +513,12 @@ void DrdConfig::setRuntimeMode(DrdRuntimeMode mode)
  */
 bool DrdConfig::mergeCommandLineOptions(const QCommandLineParser &parser, QString *error)
 {
-    DRD_LOG_INFO("Merging command line options");
+    qInfo() << "Merging command line options";
     
     // 绑定地址
     if (parser.isSet("bind-address")) {
         m_bindAddress = parser.value("bind-address");
-        DRD_LOG_INFO("CLI override bind_address: %s", m_bindAddress.toUtf8().constData());
+        qInfo() << "CLI override bind_address:" << m_bindAddress;
     }
     
     // 端口
@@ -534,33 +532,33 @@ bool DrdConfig::mergeCommandLineOptions(const QCommandLineParser &parser, QStrin
             return false;
         }
         m_port = static_cast<quint16>(port);
-        DRD_LOG_INFO("CLI override port: %u", m_port);
+        qInfo() << "CLI override port:" << m_port;
     }
     
     // 证书路径
     if (parser.isSet("cert")) {
         QString cert_path = parser.value("cert");
         m_certificatePath = resolvePath(cert_path);
-        DRD_LOG_INFO("CLI override certificate: %s", m_certificatePath.toUtf8().constData());
+        qInfo() << "CLI override certificate:" << m_certificatePath;
     }
     
     // 私钥路径
     if (parser.isSet("key")) {
         QString key_path = parser.value("key");
         m_privateKeyPath = resolvePath(key_path);
-        DRD_LOG_INFO("CLI override private_key: %s", m_privateKeyPath.toUtf8().constData());
+        qInfo() << "CLI override private_key:" << m_privateKeyPath;
     }
     
     // NLA 用户名
     if (parser.isSet("nla-username")) {
         m_nlaUsername = parser.value("nla-username");
-        DRD_LOG_INFO("CLI override nla_username: %s", m_nlaUsername.toUtf8().constData());
+        qInfo() << "CLI override nla_username:" << m_nlaUsername;
     }
     
     // NLA 密码
     if (parser.isSet("nla-password")) {
         m_nlaPassword = parser.value("nla-password");
-        DRD_LOG_INFO("CLI override nla_password: ***");
+        qInfo() << "CLI override nla_password: ***";
     }
     
     // NLA 启用/禁用
@@ -575,10 +573,10 @@ bool DrdConfig::mergeCommandLineOptions(const QCommandLineParser &parser, QStrin
     }
     if (cli_enable_nla) {
         m_nlaEnabled = true;
-        DRD_LOG_INFO("CLI override enable_nla: true");
+        qInfo() << "CLI override enable_nla: true";
     } else if (cli_disable_nla) {
         m_nlaEnabled = false;
-        DRD_LOG_INFO("CLI override enable_nla: false");
+        qInfo() << "CLI override enable_nla: false";
     }
     
     // 运行模式
@@ -592,7 +590,7 @@ bool DrdConfig::mergeCommandLineOptions(const QCommandLineParser &parser, QStrin
             return false;
         }
         setRuntimeMode(cli_mode);
-        DRD_LOG_INFO("CLI override runtime_mode: %s", runtime_mode_name.toUtf8().constData());
+        qInfo() << "CLI override runtime_mode:" << runtime_mode_name;
     }
     
     // 分辨率
@@ -602,7 +600,7 @@ bool DrdConfig::mergeCommandLineOptions(const QCommandLineParser &parser, QStrin
         if (ok && width > 0) {
             m_captureWidth = static_cast<unsigned int>(width);
             m_encodingOptions.width = m_captureWidth;
-            DRD_LOG_INFO("CLI override width: %u", m_captureWidth);
+            qInfo() << "CLI override width:" << m_captureWidth;
         }
     }
     
@@ -612,7 +610,7 @@ bool DrdConfig::mergeCommandLineOptions(const QCommandLineParser &parser, QStrin
         if (ok && height > 0) {
             m_captureHeight = static_cast<unsigned int>(height);
             m_encodingOptions.height = m_captureHeight;
-            DRD_LOG_INFO("CLI override height: %u", m_captureHeight);
+            qInfo() << "CLI override height:" << m_captureHeight;
         }
     }
     
@@ -625,16 +623,16 @@ bool DrdConfig::mergeCommandLineOptions(const QCommandLineParser &parser, QStrin
             }
             return false;
         }
-        DRD_LOG_INFO("CLI override encoder_mode: %s", encoder_mode.toUtf8().constData());
+        qInfo() << "CLI override encoder_mode:" << encoder_mode;
     }
     
     // 差分开关
     if (parser.isSet("enable-diff")) {
         m_encodingOptions.enableFrameDiff = true;
-        DRD_LOG_INFO("CLI override enable_diff: true");
+        qInfo() << "CLI override enable_diff: true";
     } else if (parser.isSet("disable-diff")) {
         m_encodingOptions.enableFrameDiff = false;
-        DRD_LOG_INFO("CLI override enable_diff: false");
+        qInfo() << "CLI override enable_diff: false";
     }
     
     // 捕获目标 FPS
@@ -643,7 +641,7 @@ bool DrdConfig::mergeCommandLineOptions(const QCommandLineParser &parser, QStrin
         int target_fps = parser.value("capture-fps").toInt(&ok);
         if (ok && target_fps > 0) {
             m_captureTargetFps = static_cast<unsigned int>(target_fps);
-            DRD_LOG_INFO("CLI override capture_fps: %u", m_captureTargetFps);
+            qInfo() << "CLI override capture_fps:" << m_captureTargetFps;
         }
     }
     
@@ -653,7 +651,7 @@ bool DrdConfig::mergeCommandLineOptions(const QCommandLineParser &parser, QStrin
         int stats_interval = parser.value("capture-stats-sec").toInt(&ok);
         if (ok && stats_interval > 0) {
             m_captureStatsIntervalSec = static_cast<unsigned int>(stats_interval);
-            DRD_LOG_INFO("CLI override capture_stats_sec: %u", m_captureStatsIntervalSec);
+            qInfo() << "CLI override capture_stats_sec:" << m_captureStatsIntervalSec;
         }
     }
     

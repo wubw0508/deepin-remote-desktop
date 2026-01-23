@@ -1,10 +1,10 @@
 #include "core/drd_server_runtime.h"
 
-// 前向声明（这些类将在后续实现）
-class DrdCaptureManager;
-class DrdEncodingManager;
-class DrdInputDispatcher;
-class DrdTlsCredentials;
+#include "capture/drd_capture_manager.h"
+#include "encoding/drd_encoding_manager.h"
+#include "security/drd_tls_credentials.h"
+
+#include <QDebug>
 
 /**
  * @brief 构造函数
@@ -16,18 +16,14 @@ class DrdTlsCredentials;
  */
 DrdServerRuntime::DrdServerRuntime(QObject *parent)
     : QObject(parent)
-    , m_capture(nullptr)
-    , m_encoder(nullptr)
+    , m_capture(new DrdCaptureManager(this))
+    , m_encoder(new DrdEncodingManager(this))
     , m_input(nullptr)
     , m_tlsCredentials(nullptr)
     , m_hasEncodingOptions(false)
     , m_streamRunning(false)
     , m_transportMode(DrdFrameTransport::GraphicsPipeline)
 {
-    // TODO: 创建子模块
-    // m_capture = new DrdCaptureManager(this);
-    // m_encoder = new DrdEncodingManager(this);
-    // m_input = new DrdInputDispatcher(this);
 }
 
 /**
@@ -45,7 +41,7 @@ DrdServerRuntime::~DrdServerRuntime()
 
 /**
  * @brief 准备流
- * 
+ *
  * 功能：准备捕获/编码/输入流水线并启动捕获线程。
  * 逻辑：若已运行则直接返回；缓存编码配置并设置默认传输模式；依次准备编码器、输入分发器与捕获管理器。
  * 参数：encodingOptions 编码选项，error 错误输出。
@@ -53,37 +49,53 @@ DrdServerRuntime::~DrdServerRuntime()
  */
 bool DrdServerRuntime::prepareStream(const DrdEncodingOptions *encodingOptions, QString *error)
 {
-    Q_UNUSED(error);
-
+    qInfo() << "[PRODUCER] DrdServerRuntime::prepareStream() - Starting stream preparation";
+    
     if (m_streamRunning)
     {
+        qInfo() << "[PRODUCER] Stream already running, skipping preparation";
         return true;
     }
 
     if (encodingOptions == nullptr)
     {
+        qWarning() << "[PRODUCER] Encoding options is null";
+        if (error)
+        {
+            *error = "Encoding options is null";
+        }
         return false;
     }
 
     m_encodingOptions = *encodingOptions;
     m_hasEncodingOptions = true;
     m_transportMode = DrdFrameTransport::GraphicsPipeline;
+    
+    qInfo() << "[PRODUCER] Encoding options cached - width:" << encodingOptions->width
+            << "height:" << encodingOptions->height
+            << "mode:" << drdEncodingModeToString(encodingOptions->mode);
 
-    // TODO: 实现流准备逻辑
-    // if (!m_encoder->prepare(encodingOptions, error)) {
-    //     return false;
-    // }
-    // if (!m_input->start(encodingOptions->width, encodingOptions->height, error)) {
-    //     m_encoder->reset();
-    //     return false;
-    // }
-    // if (!m_capture->start(encodingOptions->width, encodingOptions->height, error)) {
-    //     m_input->stop();
-    //     m_encoder->reset();
-    //     return false;
-    // }
+    // 准备编码器
+    qInfo() << "[PRODUCER] Preparing encoder...";
+    if (!m_encoder->prepare(encodingOptions, error))
+    {
+        qWarning() << "[PRODUCER] Failed to prepare encoder:" << (error ? *error : "unknown error");
+        return false;
+    }
+    qInfo() << "[PRODUCER] Encoder prepared successfully";
+
+    // 启动捕获
+    qInfo() << "[PRODUCER] Starting capture with size" << encodingOptions->width << "x" << encodingOptions->height;
+    if (!m_capture->start(encodingOptions->width, encodingOptions->height, error))
+    {
+        qWarning() << "[PRODUCER] Failed to start capture:" << (error ? *error : "unknown error");
+        m_encoder->reset();
+        return false;
+    }
+    qInfo() << "[PRODUCER] Capture started successfully";
 
     m_streamRunning = true;
+    qInfo() << "[PRODUCER] Stream preparation completed, stream running:" << m_streamRunning;
     return true;
 }
 
@@ -104,11 +116,8 @@ void DrdServerRuntime::stop()
 
     m_streamRunning = false;
 
-    // TODO: 实现停止逻辑
-    // m_capture->stop();
-    // m_encoder->reset();
-    // m_input->flush();
-    // m_input->stop();
+    m_capture->stop();
+    m_encoder->reset();
 }
 
 /**
@@ -128,10 +137,10 @@ void DrdServerRuntime::setTransport(DrdFrameTransport transport)
 
     m_transportMode = transport;
 
-    // TODO: 请求关键帧
-    // if (m_encoder) {
-    //     m_encoder->forceKeyframe();
-    // }
+    if (m_encoder)
+    {
+        m_encoder->forceKeyframe();
+    }
 }
 
 /**
@@ -216,8 +225,82 @@ void DrdServerRuntime::setTlsCredentials(DrdTlsCredentials *credentials)
  */
 void DrdServerRuntime::requestKeyframe()
 {
-    // TODO: 实现关键帧请求
-    // if (m_encoder) {
-    //     m_encoder->forceKeyframe();
-    // }
+    if (m_encoder)
+    {
+        m_encoder->forceKeyframe();
+    }
+}
+
+/**
+ * @brief 拉取编码帧（Surface GFX）
+ *
+ * 功能：从捕获队列拉取帧并编码为 Surface GFX 格式。
+ * 逻辑：从捕获管理器等待帧，然后使用编码管理器编码并发送。
+ * 参数：settings FreeRDP 设置，context Rdpgfx 上下文，surfaceId Surface ID，timeoutUs 超时时间，frameId 帧序号，h264 输出是否使用 H264，error 错误输出。
+ * 外部接口：DrdCaptureManager::waitFrame，DrdEncodingManager::encodeSurfaceGfx。
+ * 返回值：成功返回 true。
+ */
+bool DrdServerRuntime::pullEncodedFrameSurfaceGfx(rdpSettings *settings,
+                                                   RdpgfxServerContext *context,
+                                                   quint16 surfaceId,
+                                                   qint64 timeoutUs,
+                                                   quint32 frameId,
+                                                   bool *h264,
+                                                   QString *error)
+{
+    if (m_capture == nullptr || m_encoder == nullptr)
+    {
+        qWarning() << "[CONSUMER] Capture or encoder not initialized - capture:" << (m_capture != nullptr)
+                  << "encoder:" << (m_encoder != nullptr);
+        if (error)
+        {
+            *error = "Capture or encoder not initialized";
+        }
+        return false;
+    }
+
+    // 从捕获队列等待帧
+    DrdFrame *frame = nullptr;
+    if (!m_capture->waitFrame(timeoutUs, &frame, error))
+    {
+        if (error && !error->contains("Timed out") && !error->contains("no data"))
+        {
+            qWarning() << "[CONSUMER] Failed to wait for frame:" << (error ? *error : "unknown error");
+        }
+        return false;
+    }
+
+    if (frame == nullptr)
+    {
+        qWarning() << "[CONSUMER] Frame is null after waitFrame";
+        if (error)
+        {
+            *error = "Frame is null";
+        }
+        return false;
+    }
+    
+    // qDebug() << "[CONSUMER] Frame received - frameId:" << frameId
+    //         << "width:" << frame->width()
+    //         << "height:" << frame->height()
+    //         << "stride:" << frame->stride();
+
+    // 编码帧
+    bool success = m_encoder->encodeSurfaceGfx(settings, context, surfaceId, frame, frameId, h264, true, error);
+    
+    if (success)
+    {
+        // qDebug() << "[CONSUMER] Frame encoded successfully - frameId:" << frameId
+        //         << "h264:" << (h264 ? *h264 : false);
+    }
+    else
+    {
+        qWarning() << "[CONSUMER] Failed to encode frame - frameId:" << frameId
+                  << "error:" << (error ? *error : "unknown error");
+    }
+
+    // 释放帧
+    frame->deleteLater();
+
+    return success;
 }

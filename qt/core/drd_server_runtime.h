@@ -3,6 +3,9 @@
 #include <QObject>
 #include <QString>
 
+#include <freerdp/freerdp.h>
+#include <freerdp/server/rdpgfx.h>
+
 #include "core/drd_encoding_options.h"
 
 // 前向声明
@@ -10,6 +13,7 @@ class DrdCaptureManager;
 class DrdEncodingManager;
 class DrdInputDispatcher;
 class DrdTlsCredentials;
+class DrdFrame;
 
 /**
  * @brief 帧传输模式枚举
@@ -110,6 +114,26 @@ public:
      * @brief 请求关键帧
      */
     void requestKeyframe();
+
+    /**
+     * @brief 拉取编码帧（Surface GFX）
+     *
+     * @param settings FreeRDP 设置
+     * @param context Rdpgfx 上下文
+     * @param surfaceId Surface ID
+     * @param timeoutUs 超时时间（微秒）
+     * @param frameId 帧序号
+     * @param h264 输出是否使用 H264
+     * @param error 错误输出
+     * @return 成功返回 true
+     */
+    bool pullEncodedFrameSurfaceGfx(rdpSettings *settings,
+                                     RdpgfxServerContext *context,
+                                     quint16 surfaceId,
+                                     qint64 timeoutUs,
+                                     quint32 frameId,
+                                     bool *h264,
+                                     QString *error = nullptr);
 
 private:
     DrdCaptureManager *m_capture;

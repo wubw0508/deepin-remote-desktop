@@ -11,7 +11,6 @@
 #include <freerdp/primitives.h>
 
 #include "core/drd_application.h"
-#include "utils/drd_log.h"
 
 /**
  * @brief 初始化WinPR相关子系统（SSL与WTS）
@@ -64,9 +63,6 @@ int main(int argc, char **argv)
     
     // 获取FreeRDP primitives
     primitives_get();
-    
-    // 初始化日志系统
-    DrdLog::init();
     
     // 创建Qt应用实例
     QCoreApplication app(argc, argv);

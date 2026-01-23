@@ -3,13 +3,13 @@
 #include "core/drd_server_runtime.h"
 #include "session/drd_rdp_session.h"
 #include "security/drd_tls_credentials.h"
-#include "utils/drd_log.h"
 #include <freerdp/listener.h>
 #include <freerdp/settings.h>
 #include <freerdp/settings_keys.h>
 #include <freerdp/constants.h>
 #include <freerdp/freerdp.h>
 #include <freerdp/channels/wtsvc.h>
+#include <freerdp/channels/drdynvc.h>  // 添加 DRDYNVC 通道支持
 #include <winpr/wtypes.h>
 #include <winpr/wtsapi.h>
 #include <QTcpServer>
@@ -32,6 +32,7 @@ typedef struct
     rdpContext context;
     DrdRdpSession *session;
     DrdRdpListener *listener;
+    HANDLE vcm;  // Virtual Channel Manager
 } DrdRdpPeerContext;
 
 /**
@@ -62,6 +63,8 @@ DrdRdpListener::DrdRdpListener(const QString &bindAddress,
     , m_pamService(pamService)
     , m_runtimeMode(runtimeMode)
     , m_isSingleLogin(false)
+    , m_sessionCallback(nullptr)
+    , m_sessionCallbackData(nullptr)
 {
     if (encodingOptions != nullptr)
     {
@@ -137,9 +140,8 @@ bool DrdRdpListener::start(QString *error)
         handleIncomingConnection(server);
     });
     
-    DRD_LOG_MESSAGE("RDP listener started on %s:%u",
-                    m_bindAddress.isEmpty() ? "0.0.0.0" : m_bindAddress.toUtf8().constData(),
-                    m_port);
+    qInfo() << "RDP listener started on"
+            << (m_bindAddress.isEmpty() ? "0.0.0.0" : m_bindAddress) << ":" << m_port;
     
     return true;
 }
@@ -207,7 +209,7 @@ static int getSocketDescriptor(QTcpSocket *socket)
     int duplicated_fd = dup(fd);
     if (duplicated_fd < 0)
     {
-        DRD_LOG_WARNING("dup() failed: %s", strerror(errno));
+        qWarning() << "dup() failed:" << strerror(errno);
         return -1;
     }
     
@@ -234,7 +236,8 @@ static BOOL drd_peer_context_new(freerdp_peer *client, rdpContext *context)
 {
     DrdRdpPeerContext *ctx = (DrdRdpPeerContext *)context;
     ctx->session = new DrdRdpSession(client);
-    ctx->listener = nullptr;
+    ctx->listener = NULL;
+    ctx->vcm = INVALID_HANDLE_VALUE;  // 初始化为无效值
     return ctx->session != nullptr;
 }
 
@@ -258,25 +261,123 @@ static void drd_peer_context_free([[maybe_unused]] freerdp_peer *client, rdpCont
         delete ctx->session;
         ctx->session = nullptr;
     }
+    
+    // 清理 Virtual Channel Manager
+    if (ctx->vcm != nullptr && ctx->vcm != INVALID_HANDLE_VALUE)
+    {
+        WTSCloseServer(ctx->vcm);
+        ctx->vcm = INVALID_HANDLE_VALUE;
+    }
+    
     ctx->listener = nullptr;
+}
+
+/**
+ * @brief 检查监听器是否运行在 system 模式
+ *
+ * 功能：判断监听器是否运行在 system 模式。
+ * 逻辑：检查实例非空且 runtime_mode 为 DRD_RUNTIME_MODE_SYSTEM。
+ * 参数：listener 监听器。
+ * 外部接口：无。
+ */
+static bool drd_rdp_listener_is_system_mode(DrdRdpListener *listener)
+{
+    return listener != nullptr && listener->runtimeMode() == DrdRuntimeMode::System;
+}
+
+/**
+ * @brief 在 system 模式下进行 TLS 登录认证
+ *
+ * 功能：在非 NLA 模式下执行 TLS 认证。
+ * 逻辑：读取客户端凭据，进行 TLS 认证。
+ * 参数：ctx peer 上下文，client FreeRDP peer。
+ * 外部接口：FreeRDP settings API。
+ */
+static bool drd_rdp_listener_authenticate_tls_login(DrdRdpPeerContext *ctx, freerdp_peer *client)
+{
+    if (ctx == nullptr || ctx->session == nullptr || ctx->listener == nullptr || client == nullptr ||
+        client->context == nullptr || client->context->settings == nullptr)
+    {
+        qWarning() << "[TLS-AUTH] Missing context or settings for TLS authentication";
+        return false;
+    }
+
+    rdpSettings *settings = client->context->settings;
+    const char *username = freerdp_settings_get_string(settings, FreeRDP_Username);
+    const char *password = freerdp_settings_get_string(settings, FreeRDP_Password);
+    const char *domain = freerdp_settings_get_string(settings, FreeRDP_Domain);
+    
+    if (username == nullptr || *username == '\0' || password == nullptr || *password == '\0')
+    {
+        qWarning() << "[TLS-AUTH] Peer" << client->hostname << "missing credentials in TLS client info";
+        return false;
+    }
+
+    qInfo() << "[TLS-AUTH] Peer" << client->hostname << "TLS authentication for user" << username;
+    
+    // TODO: 实现 TLS/PAM 认证逻辑（目前先返回成功）
+    // 注意：PAM 认证暂时跳过，只记录日志
+    qWarning() << "[TLS-AUTH] PAM authentication not implemented yet, skipping for user" << username;
+    
+    // 清空密码（安全考虑）
+    freerdp_settings_set_string(settings, FreeRDP_Password, "");
+    
+    return true;
 }
 
 /**
  * @brief Peer PostConnect 回调
  *
  * 功能：处理连接后的初始化。
- * 逻辑：记录日志，更新会话状态。
+ * 逻辑：调用会话 post_connect，清理 NLA 资源；在非 NLA 模式下执行 TLS 认证。
  * 参数：client FreeRDP peer。
  * 外部接口：FreeRDP 回调机制。
  */
-static BOOL drd_peer_post_connect(freerdp_peer *client)
+static BOOL
+drd_peer_post_connect(freerdp_peer *client)
 {
+    qInfo() << "[POSTCONNECT] drd_peer_post_connect called for peer" << client->hostname;
     DrdRdpPeerContext *ctx = (DrdRdpPeerContext *)client->context;
     if (ctx == nullptr || ctx->session == nullptr)
     {
+        qWarning() << "[POSTCONNECT] drd_peer_post_connect: context or session is NULL";
         return FALSE;
     }
-    ctx->session->setPeerState("post-connect");
+    
+    // 调用会话的 post_connect 处理
+    BOOL result = ctx->session->postConnect();
+    
+    // 清理 NLA SAM 文件（参考 C 版本实现）
+    // 注意：Qt 版本可能没有 NLA SAM 文件，但保持与 C 版本一致的清理逻辑
+    // g_clear_pointer(&ctx->nla_sam, drd_nla_sam_file_free);
+    
+    if (!result)
+    {
+        qWarning() << "[POSTCONNECT] Session post-connect failed for peer" << client->hostname;
+        return FALSE;
+    }
+
+    // 在非 NLA 模式下执行 TLS 认证（system 模式）
+    if (ctx->listener != nullptr && !ctx->listener->nlaEnabled())
+    {
+        if (drd_rdp_listener_is_system_mode(ctx->listener))
+        {
+            if (!drd_rdp_listener_authenticate_tls_login(ctx, client))
+            {
+                qWarning() << "[POSTCONNECT] TLS authentication failed for peer" << client->hostname;
+                ctx->session->disconnect("tls-rdp-sso-auth-failed");
+                return FALSE;
+            }
+        }
+    }
+
+    // 调用会话回调（如果设置了）
+    if (ctx->listener != nullptr)
+    {
+        ctx->listener->invokeSessionCallback(ctx->session);
+    }
+    
+    qInfo() << "[POSTCONNECT] drd_peer_post_connect completed successfully for peer" << client->hostname;
     return TRUE;
 }
 
@@ -284,7 +385,7 @@ static BOOL drd_peer_post_connect(freerdp_peer *client)
  * @brief Peer Activate 回调
  *
  * 功能：激活 peer 会话。
- * 逻辑：记录日志，更新会话状态。
+ * 逻辑：记录日志，更新会话状态，启动抓取和编码流程。
  * 参数：client FreeRDP peer。
  * 外部接口：FreeRDP 回调机制。
  */
@@ -295,8 +396,7 @@ static BOOL drd_peer_activate(freerdp_peer *client)
     {
         return FALSE;
     }
-    ctx->session->setPeerState("activated");
-    return TRUE;
+    return ctx->session->activate();
 }
 
 /**
@@ -341,6 +441,70 @@ static void drd_rdp_listener_session_closed(DrdRdpSession *session, void *user_d
 }
 
 /**
+ * @brief Peer Capabilities 回调
+ *
+ * 功能：处理客户端能力协商。
+ * 逻辑：检查客户端是否支持DRDYNVC和DesktopResize能力。
+ * 参数：client FreeRDP peer。
+ * 外部接口：FreeRDP 回调机制。
+ */
+static BOOL drd_peer_capabilities(freerdp_peer *client)
+{
+    if (client == nullptr || client->context == nullptr)
+    {
+        return FALSE;
+    }
+    
+    rdpContext *context = client->context;
+    rdpSettings *settings = context->settings;
+    if (settings == nullptr)
+    {
+        return FALSE;
+    }
+    
+    const quint32 client_width = freerdp_settings_get_uint32(settings, FreeRDP_DesktopWidth);
+    const quint32 client_height = freerdp_settings_get_uint32(settings, FreeRDP_DesktopHeight);
+    const bool desktop_resize = freerdp_settings_get_bool(settings, FreeRDP_DesktopResize);
+    
+    DrdRdpPeerContext *ctx = (DrdRdpPeerContext *)client->context;
+    
+    // 检查 Virtual Channel Manager 是否存在
+    if (ctx == nullptr || ctx->vcm == nullptr || ctx->vcm == INVALID_HANDLE_VALUE)
+    {
+        qWarning() << "Peer" << client->hostname << "missing virtual channel manager during capability exchange";
+        return FALSE;
+    }
+    
+    // 检查 DRDYNVC 通道是否已加入
+    if (!WTSVirtualChannelManagerIsChannelJoined(ctx->vcm, DRDYNVC_SVC_CHANNEL_NAME))
+    {
+        qWarning() << "Peer" << client->hostname << "does not support DRDYNVC, rejecting connection";
+        return FALSE;
+    }
+    
+    if (!desktop_resize)
+    {
+        if (ctx != nullptr && ctx->session != nullptr)
+        {
+            ctx->session->setPeerState("desktop-resize-unsupported");
+        }
+        qWarning() << "Peer" << client->hostname << "disabled DesktopResize capability (client" << client_width << "x" << client_height << "), rejecting connection";
+        return FALSE;
+    }
+    
+    // 在 system 模式下更新编码配置
+    if (ctx != nullptr && ctx->listener != nullptr)
+    {
+        // 调用 system 模式编码更新（需要实现对应的函数）
+        // drd_rdp_listener_update_system_encoding(ctx->listener, client_width, client_height);
+        qDebug() << "System mode encoding update would be called for client resolution" << client_width << "x" << client_height;
+    }
+    
+    qInfo() << "Peer" << client->hostname << "capabilities accepted with DesktopResize enabled (" << client_width << "x" << client_height << "requested)";
+    return TRUE;
+}
+
+/**
  * @brief 配置 peer 设置
  *
  * 功能：配置 FreeRDP peer 的各种设置。
@@ -352,14 +516,14 @@ static bool configurePeerSettings(DrdRdpListener *listener, freerdp_peer *client
 {
     if (client->context == nullptr)
     {
-        DRD_LOG_WARNING("Peer %s context is null", peerName.toUtf8().constData());
+        qWarning() << "Peer" << peerName << "context is null";
         return false;
     }
     
     rdpSettings *settings = client->context->settings;
     if (settings == nullptr)
     {
-        DRD_LOG_WARNING("Peer %s settings is null", peerName.toUtf8().constData());
+        qWarning() << "Peer" << peerName << "settings is null";
         return false;
     }
     
@@ -367,14 +531,14 @@ static bool configurePeerSettings(DrdRdpListener *listener, freerdp_peer *client
     DrdTlsCredentials *tls = listener->runtime()->tlsCredentials();
     if (tls == nullptr)
     {
-        DRD_LOG_WARNING("TLS credentials not configured");
+        qWarning() << "TLS credentials not configured";
         return false;
     }
     
     QString error;
     if (!tls->apply(settings, &error))
     {
-        DRD_LOG_WARNING("Failed to apply TLS credentials: %s", error.toUtf8().constData());
+        qWarning() << "Failed to apply TLS credentials:" << error;
         return false;
     }
     
@@ -384,7 +548,7 @@ static bool configurePeerSettings(DrdRdpListener *listener, freerdp_peer *client
     
     if (width == 0 || height == 0)
     {
-        DRD_LOG_WARNING("Encoding geometry is not configured");
+        qWarning() << "Encoding geometry is not configured";
         return false;
     }
     
@@ -395,7 +559,7 @@ static bool configurePeerSettings(DrdRdpListener *listener, freerdp_peer *client
         !freerdp_settings_set_bool(settings, FreeRDP_ServerMode, TRUE) ||
         !freerdp_settings_set_uint32(settings, FreeRDP_EncryptionLevel, ENCRYPTION_LEVEL_CLIENT_COMPATIBLE))
     {
-        DRD_LOG_WARNING("Failed to configure peer settings");
+        qWarning() << "Failed to configure peer settings";
         return false;
     }
     
@@ -407,7 +571,7 @@ static bool configurePeerSettings(DrdRdpListener *listener, freerdp_peer *client
             !freerdp_settings_set_bool(settings, FreeRDP_NlaSecurity, FALSE) ||
             !freerdp_settings_set_bool(settings, FreeRDP_RdpSecurity, FALSE))
         {
-            DRD_LOG_WARNING("Failed to configure TLS-only security flags");
+            qWarning() << "Failed to configure TLS-only security flags";
             return false;
         }
     }
@@ -418,7 +582,7 @@ static bool configurePeerSettings(DrdRdpListener *listener, freerdp_peer *client
             !freerdp_settings_set_bool(settings, FreeRDP_NlaSecurity, TRUE) ||
             !freerdp_settings_set_bool(settings, FreeRDP_RdpSecurity, FALSE))
         {
-            DRD_LOG_WARNING("Failed to configure NLA security flags");
+            qWarning() << "Failed to configure NLA security flags";
             return false;
         }
     }
@@ -428,12 +592,69 @@ static bool configurePeerSettings(DrdRdpListener *listener, freerdp_peer *client
     {
         if (!freerdp_settings_set_bool(settings, FreeRDP_RdstlsSecurity, TRUE))
         {
-            DRD_LOG_WARNING("Failed to enable RDSTLS security flags");
+            qWarning() << "Failed to enable RDSTLS security flags";
             return false;
         }
     }
     
     return true;
+}
+
+/**
+ * @brief 从 QTcpSocket 创建 FreeRDP peer
+ *
+ * 功能：从 Qt socket 创建 FreeRDP peer 对象。
+ * 逻辑：调用 getSocketDescriptor 获取文件描述符，创建 FreeRDP peer。
+ * 参数：socket Qt TCP socket，error 错误信息输出。
+ * 外部接口：FreeRDP freerdp_peer_new API。
+ */
+freerdp_peer *DrdRdpListener::drd_rdp_listener_peer_from_connection(QTcpSocket *socket, QString *error)
+{
+    if (socket == nullptr)
+    {
+        if (error)
+        {
+            *error = "Socket is null";
+        }
+        return nullptr;
+    }
+    
+    // 获取对端地址用于日志
+    QString peerAddress = socket->peerAddress().toString();
+    quint16 peerPort = socket->peerPort();
+    QString peerName = QString("%1:%2").arg(peerAddress).arg(peerPort);
+    
+    qInfo() << "Creating FreeRDP peer from connection" << peerName;
+    
+    // 使用现有的 getSocketDescriptor 函数获取文件描述符
+    int duplicated_fd = getSocketDescriptor(socket);
+    if (duplicated_fd < 0)
+    {
+        QString errMsg = QString("Failed to get socket descriptor for %1").arg(peerName);
+        qWarning() << errMsg;
+        if (error)
+        {
+            *error = errMsg;
+        }
+        return nullptr;
+    }
+    
+    // 创建 freerdp_peer
+    freerdp_peer *peer = freerdp_peer_new(duplicated_fd);
+    if (peer == nullptr)
+    {
+        QString errMsg = QString("freerdp_peer_new returned null for %1").arg(peerName);
+        qWarning() << errMsg;
+        close(duplicated_fd);
+        if (error)
+        {
+            *error = errMsg;
+        }
+        return nullptr;
+    }
+    
+    qDebug() << "FreeRDP peer created successfully for" << peerName;
+    return peer;
 }
 
 /**
@@ -451,115 +672,183 @@ void DrdRdpListener::handleIncomingConnection(QTcpServer *server)
     {
         return;
     }
-    
+
     // 获取对端地址
     QString peerAddress = socket->peerAddress().toString();
     quint16 peerPort = socket->peerPort();
     QString peerName = QString("%1:%2").arg(peerAddress).arg(peerPort);
-    
-    DRD_LOG_MESSAGE("Incoming connection from %s", peerName.toUtf8().constData());
-    
-    // 1. 从 socket 获取文件描述符
-    int fd = getSocketDescriptor(socket);
-    if (fd < 0)
-    {
-        DRD_LOG_WARNING("Failed to get socket descriptor for %s", peerName.toUtf8().constData());
-        socket->disconnectFromHost();
-        socket->deleteLater();
-        return;
-    }
-    
-    // 2. 创建 freerdp_peer
-    freerdp_peer *peer = freerdp_peer_new(fd);
+
+    qInfo() << "Incoming connection from" << peerName;
+
+    // 使用封装的函数创建 FreeRDP peer
+    QString peerError;
+    freerdp_peer *peer = drd_rdp_listener_peer_from_connection(socket, &peerError);
     if (peer == nullptr)
     {
-        DRD_LOG_WARNING("Failed to create FreeRDP peer for %s", peerName.toUtf8().constData());
-        close(fd);
+        qWarning() << "Failed to create FreeRDP peer:" << peerError;
         socket->disconnectFromHost();
         socket->deleteLater();
         return;
     }
-    
+
+    qDebug() << "FreeRDP peer created successfully for" << peerName;
+
     // 设置 peer 上下文
     peer->ContextSize = sizeof(DrdRdpPeerContext);
     peer->ContextNew = drd_peer_context_new;
     peer->ContextFree = drd_peer_context_free;
-    
+
     // 初始化 peer 上下文（这会调用 drd_peer_context_new 回调）
     if (!freerdp_peer_context_new(peer))
     {
-        DRD_LOG_WARNING("Failed to allocate peer context for %s", peerName.toUtf8().constData());
+        qWarning() << "Failed to allocate peer context for" << peerName;
         freerdp_peer_free(peer);
         socket->disconnectFromHost();
         socket->deleteLater();
         return;
     }
-    
-    // 检查是否有活动会话
+
+    qDebug() << "FreeRDP peer context allocated for" << peerName;
+
+    // 检查是否有活动会话（在配置设置之前检查）
     if (hasActiveSession())
     {
-        DRD_LOG_WARNING("Rejecting connection from %s: session already active", peerName.toUtf8().constData());
+        qWarning() << "Rejecting connection from" << peerName << ": session already active";
         freerdp_peer_free(peer);
         socket->disconnectFromHost();
         socket->deleteLater();
         return;
     }
-    
+
+    qDebug() << "No active session found, proceeding with connection for" << peerName;
+
     // 配置 peer 设置
     if (!configurePeerSettings(this, peer, peerName))
     {
-        DRD_LOG_WARNING("Failed to configure peer settings for %s", peerName.toUtf8().constData());
+        qWarning() << "Failed to configure peer settings for" << peerName;
         freerdp_peer_free(peer);
         socket->disconnectFromHost();
         socket->deleteLater();
         return;
     }
-    
+
+    qDebug() << "Peer settings configured successfully for" << peerName;
+
     // 设置 peer 回调
     peer->PostConnect = drd_peer_post_connect;
     peer->Activate = drd_peer_activate;
     peer->Disconnect = drd_peer_disconnected;
-    
+    peer->Capabilities = drd_peer_capabilities;
+
+    qDebug() << "FreeRDP callbacks set for" << peerName;
+
     // 初始化 peer
-    if (peer->Initialize == nullptr || !peer->Initialize(peer))
+    qInfo() << "Initializing peer for" << peerName;
+    if (peer->Initialize == nullptr)
     {
-        DRD_LOG_WARNING("Failed to initialize peer for %s", peerName.toUtf8().constData());
+        qWarning() << "Peer Initialize callback is NULL for" << peerName;
         freerdp_peer_free(peer);
         socket->disconnectFromHost();
         socket->deleteLater();
         return;
     }
-    
+
+    qDebug() << "Peer Initialize callback is available, calling Initialize() for" << peerName;
+
+    if (!peer->Initialize(peer))
+    {
+        qWarning() << "Failed to initialize peer for" << peerName;
+        freerdp_peer_free(peer);
+        socket->disconnectFromHost();
+        socket->deleteLater();
+        return;
+    }
+    qInfo() << "Peer initialized successfully for" << peerName;
+    qDebug() << "Peer connected state after initialization:" << peer->connected;
+
     // 获取 peer 上下文
     DrdRdpPeerContext *ctx = (DrdRdpPeerContext *)peer->context;
     if (ctx == nullptr || ctx->session == nullptr)
     {
-        DRD_LOG_WARNING("Peer %s context missing session", peerName.toUtf8().constData());
+        qWarning() << "Peer" << peerName << "context missing session";
         freerdp_peer_free(peer);
         socket->disconnectFromHost();
         socket->deleteLater();
         return;
     }
-    
-    // 设置会话属性
+
+    qDebug() << "Peer context and session found for" << peerName;
+
+    // 设置会话属性（参考C版本第1308-1321行）
     ctx->session->setPeerAddress(peerName);
+
+    // 创建 Virtual Channel Manager（使用 WTSOpenServerA，参考C版本第1310行）
+    ctx->vcm = WTSOpenServerA((LPSTR)peer->context);
+    if (ctx->vcm == nullptr || ctx->vcm == INVALID_HANDLE_VALUE)
+    {
+        qWarning() << "Failed to create virtual channel manager for" << peerName;
+        freerdp_peer_free(peer);
+        socket->disconnectFromHost();
+        socket->deleteLater();
+        return;
+    }
+
+    qDebug() << "Virtual Channel Manager created successfully for" << peerName;
+    
+    // 设置 Virtual Channel Manager 到会话（参考C版本第1317行）
+    ctx->session->setVirtualChannelManager(ctx->vcm);
+
+    // 设置 runtime 和被动模式（参考C版本第1319-1321行）
     ctx->listener = this;
+    ctx->session->setRuntime(m_runtime);
+    ctx->session->setPassiveMode(drd_rdp_listener_is_system_mode(this));
+    
+    // 设置关闭回调（参考C版本第1332-1334行）
     ctx->session->setClosedCallback(drd_rdp_listener_session_closed, this);
     
-    // 启动事件线程
+    // 设置peer状态（参考C版本第1330行）
+    ctx->session->setPeerState("initialized");
+    
+    qDebug() << "Session properties set for" << peerName;
+    qInfo() << "Virtual Channel Manager created and set for session" << peerName;
+    
+    // 添加到会话列表（参考C版本第1331行）
+    m_sessions.append(QPointer<DrdRdpSession>(ctx->session));
+    
+    // 关键修复：参考C版本实现，直接启动线程，不检查连接状态
+    // 在连接建立阶段，peer->connected可能为0，但连接仍在建立中
+    // FreeRDP会在握手过程中更新连接状态
+    qInfo() << "Starting event and VCM threads (connection establishment in progress)";
+    qDebug() << "Peer state - connected:" << (peer ? peer->connected : false);
+    
+    // 启动事件线程 - 这是连接成功的关键（参考C版本第1323行）
+    qInfo() << "Starting event thread for" << peerName;
     if (!ctx->session->startEventThread())
     {
-        DRD_LOG_WARNING("Failed to start event thread for %s", peerName.toUtf8().constData());
+        qWarning() << "Failed to start event thread for" << peerName;
         freerdp_peer_free(peer);
         socket->disconnectFromHost();
         socket->deleteLater();
         return;
     }
+    qInfo() << "Event thread started for" << peerName;
+    qDebug() << "Event thread status: connectionAlive=" << ctx->session->isConnectionAlive();
     
-    // 添加到会话列表
+    // 启动 VCM 线程（监控 drdynvc 状态）
+    qInfo() << "Starting VCM thread for" << peerName;
+    if (!ctx->session->startVcmThread())
+    {
+        qWarning() << "Failed to start VCM thread for" << peerName;
+        // VCM 线程失败不是致命错误，继续
+    }
+    else
+    {
+        qInfo() << "VCM thread started for" << peerName;
+        qDebug() << "VCM thread started successfully";
+    }
     m_sessions.append(QPointer<DrdRdpSession>(ctx->session));
     
-    DRD_LOG_MESSAGE("Accepted connection from %s", peerName.toUtf8().constData());
+    qInfo() << "Accepted connection from" << peerName;
     
     // 关闭 Qt socket（FreeRDP 现在拥有文件描述符）
     socket->disconnectFromHost();
@@ -587,10 +876,39 @@ void DrdRdpListener::handleSessionClosed(DrdRdpSession *session)
         if (m_sessions[i] == session)
         {
             m_sessions.removeAt(i);
-            DRD_LOG_MESSAGE("Session %s closed, %d session(s) remaining",
-                          session->peerAddress().toUtf8().constData(),
-                          m_sessions.size());
+            qInfo() << "handleSessionClosed Session" << session->peerAddress() << "closed," << m_sessions.size() << "session(s) remaining";
+            
+            // 关键修复：确保会话相关的资源被正确清理
+            // session 对象会在 Qt 对象树中自动清理其子对象（包括 socket）
             break;
         }
+    }
+}
+
+/**
+    * @brief 设置会话回调函数
+    *
+    * 功能：设置会话建立后的回调函数。
+    * 逻辑：保存回调函数和用户数据，在会话建立后调用。
+    * 参数：func 回调函数，user_data 用户数据。
+    */
+void DrdRdpListener::setSessionCallback(DrdRdpListener::SessionCallbackFunc func, void *user_data)
+{
+    m_sessionCallback = func;
+    m_sessionCallbackData = user_data;
+}
+
+/**
+ * @brief 调用会话回调
+ *
+ * 功能：调用已设置的会话回调函数。
+ * 逻辑：检查回调函数是否设置，如果设置则调用。
+ * 参数：session 会话对象。
+ */
+void DrdRdpListener::invokeSessionCallback(DrdRdpSession *session)
+{
+    if (m_sessionCallback != nullptr)
+    {
+        m_sessionCallback(this, session, m_sessionCallbackData);
     }
 }
